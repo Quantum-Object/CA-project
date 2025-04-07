@@ -1,0 +1,4 @@
+Ok the following is needed :
+1. Memory 
+2. Registers 
+3. 
