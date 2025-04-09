@@ -30,10 +30,18 @@ these turn the (string) int int which is the opcode+m....asm
 */
 
 // R type instruction
-void R_type(char instruction[], int p1, int p2, int p3) {
+void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     printf("R_type instruction: %s %d %d %d\n", instruction, p1, p2, p3);
-    char opcode[10];
-
+    int opcode; // this needs a function to get crosspodning opcode (hard coded)
+    int inst=opcode;
+    inst = inst << 5;
+    inst +=p1;
+    inst = inst << 5;
+    inst  +=p2;
+    inst = inst << 5;
+    inst +=p3;
+    inst << 13;
+    mem[memAddr] = inst;
 
 }
 
@@ -48,6 +56,7 @@ void R_type(char instruction[], int p1, int p2, int p3) {
 
 // Read from asm.txt file 
 int read_file() {
+    int memAddr = 0; // Memory address to store instructions
     int param1, param2, param3; // for reading registers and values
     FILE *file = fopen("asm.txt", "r");  
     if (file == NULL) {
@@ -73,7 +82,7 @@ int read_file() {
             param2= word[1] - '0';
             fscanf(file, "%99s", word);
             param3 = word[1] - '0';
-            R_type(inst, param1, param2, param3);
+            R_type(inst, param1, param2, param3,memAddr++);
          }
         else if (
         strcmp(word, "MOVI") == 0 || strcmp(word, "JEQ") == 0 ||
@@ -84,7 +93,7 @@ int read_file() {
             fscanf(file, "%99s", word);
             param2= word[1] - '0';
             fscanf(file, "%99s", word);
-            param3 = word[1] - '0';
+            param3 = word[0] - '0';
 
         }
         else if (strcmp(word, "JMP")==0){
