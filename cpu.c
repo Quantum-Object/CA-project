@@ -40,17 +40,36 @@ void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     inst  +=p2;
     inst = inst << 5;
     inst +=p3;
-    inst << 13;
+    inst = inst << 13;
     mem[memAddr] = inst;
 
 }
 
 // I type instruction
-
+void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
+    printf("I_type instruction: %s %d %d %d\n", instruction, p1, p2, p3);
+    int opcode; // this needs a function to get crosspodning opcode (hard coded)
+    int inst=opcode;
+    inst = inst << 5;
+    inst +=p1;
+    inst = inst << 5;
+    inst  +=p2;
+    inst = inst << 18;
+    inst +=p3;
+    mem[memAddr] = inst;
+}
 
 
 // J type instruction
+void J_type(char instruction[], int p1,int memAddr) {
+    printf("J_type instruction: %s %d\n", instruction, p1);
+    int opcode; // this needs a function to get crosspodning opcode (hard coded)
+    int inst=opcode;
+    inst = inst << 28;
+    inst +=p1;
+    mem[memAddr] = inst;
 
+}
 
 
 
@@ -88,19 +107,22 @@ int read_file() {
         strcmp(word, "MOVI") == 0 || strcmp(word, "JEQ") == 0 ||
         strcmp(word, "XORI") == 0 || strcmp(word, "MOVR") == 0 ||
         strcmp(word, "MOVM") == 0 ) {
+            char inst[10]; 
+            strcpy(inst, word);
             fscanf(file, "%99s", word);
             param1 = word[1] - '0'; //convert char to int '1' -> 1
             fscanf(file, "%99s", word);
             param2= word[1] - '0';
             fscanf(file, "%99s", word);
-            param3 = word[0] - '0';
-
+            param3 =  atoi(word); // convert string to int
+            I_type(inst, param1, param2, param3,memAddr++);
         }
         else if (strcmp(word, "JMP")==0){
+            char inst[10]; 
+            strcpy(inst, word);
             fscanf(file, "%99s", word);
-            param1 = word[1] - '0'; 
-            
-           
+            param1 = atoi(word);
+            J_type(inst, param1,memAddr++);
 
         }
         else {
