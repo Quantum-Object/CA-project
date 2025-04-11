@@ -1,3 +1,5 @@
 # this is where the assembly code should be written
 ADD R1 R2 R3  #well is is also an instructor 
-SUB R1 R2 R3
+SUB S1 R2 R3  #the e3keheirhejfnr   
+ADD Rthe1 R2 R3 
+XORI ther1 R2 IMM
