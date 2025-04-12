@@ -4,6 +4,7 @@
 #include <ctype.h>
 
 
+
 #define MEM_SIZE 2048
 #define REG_SIZE 32
 
@@ -28,6 +29,12 @@ these turn the (string) int int which is the opcode+m....asm
 
 
 */
+//-------------------------------- FUNCTIONS THAT C DOES NOT HAVE --------------------------------
+//min function
+int min(int a, int b) {
+    return (a < b) ? a : b;
+}
+
 //substring function
 char* substring(char s[], int i, int j) {
     // get substring from (i,j-1) inclusive
@@ -52,6 +59,20 @@ void print_binary(int n) {
     }
     printf("\n");
 }
+//-------------------------------- FUNCTIONS FOR MEMORY --------------------------------
+// function to print memory
+void print_memory(int start, int end) {
+    printf("Memory contents:\n");
+    for (int i = start; i < min(end+1,MEM_SIZE); i++) {
+            printf("Address %d: ", i);
+            print_binary(mem[i]);
+            printf("\n");
+    }
+}
+
+
+//-------------------------------- FUNCTIONS FOR INPUT Reading --------------------------------
+
 
 // function for maping instruction to opcode
 int get_opcode(char instruction[]) {
@@ -72,7 +93,6 @@ int get_opcode(char instruction[]) {
 
 // R type instruction
 void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
-    printf("R_type instruction: %s %d %d %d\n", instruction, p1, p2, p3);
     int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 5;
@@ -87,7 +107,6 @@ void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
 
 // I type instruction
 void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
-    printf("I_type instruction: %s %d %d %d\n", instruction, p1, p2, p3);
     int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 5;
@@ -103,7 +122,6 @@ void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
 
 // J type instruction
 void J_type(char instruction[], int p1,int memAddr) {
-    printf("J_type instruction: %s %d\n", instruction, p1);
     int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 28;
@@ -206,9 +224,12 @@ int read_file() {
 
 
 
+
 int main() {
     while (read_file()) {
         printf("ERRORR:\n");
     }
+    print_memory(0,5);
+
     return 0;
 }
