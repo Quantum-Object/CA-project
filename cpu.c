@@ -110,12 +110,20 @@ int read_file() {
             char inst[10]; 
             strcpy(inst, word);
             fscanf(file, "%99s", word);
+            if (strcmp(word,"MOVI")==0){
+                fscanf(file, "%99s", word);
+                param1 = word[1] - '0'; //convert char to int '1' -> 1
+                fscanf(file, "%99s", word);
+                param2 =  atoi(word); 
+                I_type(inst, param1, param2, 0,memAddr++);
+            }
+            else {
             param1 = word[1] - '0'; //convert char to int '1' -> 1
             fscanf(file, "%99s", word);
             param2= word[1] - '0';
             fscanf(file, "%99s", word);
             param3 =  atoi(word); // convert string to int
-            I_type(inst, param1, param2, param3,memAddr++);
+            I_type(inst, param1, param2, param3,memAddr++);}
         }
         else if (strcmp(word, "JMP")==0){
             char inst[10]; 
