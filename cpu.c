@@ -28,11 +28,36 @@ these turn the (string) int int which is the opcode+m....asm
 
 
 */
+//binary printing function
+void print_binary(int n) {
+    for (int i = 31; i >= 0; i--) {
+        int bit = (n >> i) & 1;
+        printf("%d", bit);
+    }
+    printf("\n");
+}
+
+// function for maping instruction to opcode
+int get_opcode(char instruction[]) {
+    if (strcmp(instruction, "ADD") == 0) return 0;
+    else if (strcmp(instruction, "SUB") == 0) return 1;
+    else if (strcmp(instruction, "MUL") == 0) return 2;
+    else if (strcmp(instruction, "MOVI") == 0) return 3;
+    else if (strcmp(instruction, "JEQ") == 0) return 4;
+    else if (strcmp(instruction, "AND") == 0) return 5;
+    else if (strcmp(instruction, "XORI") == 0) return 6;
+    else if (strcmp(instruction, "JMP") == 0) return 7;
+    else if (strcmp(instruction, "LSL") == 0) return 8;
+    else if (strcmp(instruction, "LSR") == 0) return 9;
+    else if (strcmp(instruction, "MOVR") == 0) return 10;
+    else if (strcmp(instruction, "MOVM") == 0) return 11;
+    return -1; // Unknown instruction
+}
 
 // R type instruction
 void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     printf("R_type instruction: %s %d %d %d\n", instruction, p1, p2, p3);
-    int opcode; // this needs a function to get crosspodning opcode (hard coded)
+    int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 5;
     inst +=p1;
@@ -42,13 +67,12 @@ void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     inst +=p3;
     inst = inst << 13;
     mem[memAddr] = inst;
-
 }
 
 // I type instruction
 void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     printf("I_type instruction: %s %d %d %d\n", instruction, p1, p2, p3);
-    int opcode; // this needs a function to get crosspodning opcode (hard coded)
+    int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 5;
     inst +=p1;
@@ -56,6 +80,7 @@ void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     inst  +=p2;
     inst = inst << 18;
     inst +=p3;
+    print_binary(inst);
     mem[memAddr] = inst;
 }
 
@@ -63,7 +88,7 @@ void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
 // J type instruction
 void J_type(char instruction[], int p1,int memAddr) {
     printf("J_type instruction: %s %d\n", instruction, p1);
-    int opcode; // this needs a function to get crosspodning opcode (hard coded)
+    int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 28;
     inst +=p1;
