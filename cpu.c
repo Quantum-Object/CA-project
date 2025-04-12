@@ -28,6 +28,22 @@ these turn the (string) int int which is the opcode+m....asm
 
 
 */
+//substring function
+char* substring(char s[], int i, int j) {
+    // get substring from (i,j-1) inclusive
+    char *sub = (char*)malloc((j - i + 1) * sizeof(char));
+    if (sub == NULL) {
+        printf("Memory allocation failed\n");
+        exit(1);
+    }
+    int k = 0;
+    for (int m = i; m < j; m++) {
+        sub[k++] = s[m];
+    }
+    sub[k] = '\0'; // Null-terminate the string
+    return sub;
+
+}
 //binary printing function
 void print_binary(int n) {
     for (int i = 31; i >= 0; i--) {
@@ -97,7 +113,6 @@ void J_type(char instruction[], int p1,int memAddr) {
 }
 
 
-
 // Read from asm.txt file 
 int read_file() {
     int memAddr = 0; // Memory address to store instructions
@@ -121,11 +136,11 @@ int read_file() {
             char inst[10]; 
             strcpy(inst, word);
             fscanf(file, "%99s", word);
-            param1 = word[1] - '0'; //convert char to int '1' -> 1
+            param1 = atoi(substring(word, 1, strlen(word))); // Extract substring and convert to int
             fscanf(file, "%99s", word);
-            param2= word[1] - '0';
+            param2 = atoi(substring(word, 1, strlen(word)));
             fscanf(file, "%99s", word);
-            param3 = word[1] - '0';
+            param3 = atoi(substring(word, 1, strlen(word)));
             R_type(inst, param1, param2, param3,memAddr++);
          }
         else if (
@@ -137,15 +152,15 @@ int read_file() {
             fscanf(file, "%99s", word);
             if (strcmp(word,"MOVI")==0){
                 fscanf(file, "%99s", word);
-                param1 = word[1] - '0'; //convert char to int '1' -> 1
+                param1 = atoi(substring(word, 1, strlen(word)));
                 fscanf(file, "%99s", word);
-                param2 =  atoi(word); 
+                param2 = atoi(substring(word, 1, strlen(word)));
                 I_type(inst, param1, param2, 0,memAddr++);
             }
             else {
-            param1 = word[1] - '0'; //convert char to int '1' -> 1
+            param1 = atoi(substring(word, 1, strlen(word)));
             fscanf(file, "%99s", word);
-            param2= word[1] - '0';
+            param2 = atoi(substring(word, 1, strlen(word)));
             fscanf(file, "%99s", word);
             param3 =  atoi(word); // convert string to int
             I_type(inst, param1, param2, param3,memAddr++);}
@@ -191,10 +206,9 @@ int read_file() {
 
 
 
-
-
 int main() {
-    if (read_file())
-        printf("Error parsing file.\n");
+    while (read_file()) {
+        printf("ERRORR:\n");
+    }
     return 0;
 }
