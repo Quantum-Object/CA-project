@@ -258,27 +258,27 @@ int* decode() {
         decode[3] = (instruction >> 13) & 0x1F; // Get the third register
         decode[4] = (instruction >> 0) & 0x1FFF; // Get the shamt
         
-    } else if (opcode==3 || opcode==4 || opcode==7 ){
+    } else if (opcode==3 || opcode==4 || opcode==6 || opcode==10 || opcode==11){
         decode[1] = (instruction >> 23) & 0x1F; // get the first register
         decode[2] = (instruction >> 18) & 0x1F; // Get the second register
         decode[5] = (instruction >> 0) & 0x3FFFF; // Get the immediate value
     }
-    /*
-    printf("decode[0]: %d\n", decode[0]);
-    print_binary(decode[0]);
-    printf("decode[0]: %d\n", decode[1]);
-    print_binary(decode[1]);
-    printf("decode[0]: %d\n", decode[2]);
-    print_binary(decode[2]);
-    printf("decode[0]: %d\n", decode[3]);
-    print_binary(decode[3]);
-    printf("decode[0]: %d\n", decode[4]);
-    print_binary(decode[4]);
-    printf("decode[0]: %d\n", decode[5]);
-    print_binary(decode[5]);
-    printf("decode[0]: %d\n", decode[6]);
-    print_binary(decode[6]);
-    */
+    else if (opcode==7){
+        decode[6] = (instruction >> 0) & 0xFFFFFFF; // Get the address
+    }
+    else {
+        printf("Unknown instruction type\n");
+        return NULL;
+    }
+    // Print decoded values
+    printf("Decoded Instruction:\n");
+    printf("Opcode: %d\n", decode[0]);
+    printf("First Register: %d\n", decode[1]);
+    printf("Second Register: %d\n", decode[2]);
+    printf("Third Register: %d\n", decode[3]);
+    printf("Shamt: %d\n", decode[4]);
+    printf("Immediate Value: %d\n", decode[5]);
+    printf("Address: %d\n", decode[6]);
     return decode;
 }
 
@@ -320,6 +320,8 @@ int main() {
     // Print memory contents
     print_memory(0, 5); // Print first 10 memory locations
     fetch(); // Fetch the instruction
+    decode();
+    fetch();
     decode();
 
     return 0;
