@@ -173,7 +173,7 @@ int read_file() {
             fscanf(file, "%99s", word);
             param2 = atoi(substring(word, 1, strlen(word)));
             fscanf(file, "%99s", word);
-            int shamt = atoi(substring(word, 0, strlen(word)));
+            int shamt = atoi(word); // Extract substring and convert to int);
              R_type(inst, param1, param2, 0,shamt,memAddr++);
         }
         else if (
@@ -182,13 +182,12 @@ int read_file() {
         strcmp(word, "MOVM") == 0 ) {
             char inst[10]; 
             strcpy(inst, word);
-            fscanf(file, "%99s", word);
             if (strcmp(word,"MOVI")==0){
                 fscanf(file, "%99s", word);
                 param1 = atoi(substring(word, 1, strlen(word)));
                 fscanf(file, "%99s", word);
-                param2 = atoi(substring(word, 1, strlen(word)));
-                I_type(inst, param1, param2, 0,memAddr++);
+                param3 = atoi(word);
+                I_type(inst, param1, 0, param3,memAddr++);
             }
             else {
             param1 = atoi(substring(word, 1, strlen(word)));
@@ -212,7 +211,7 @@ int read_file() {
         }
 
 
-
+        printf("%d",memAddr);
     }
 
     fclose(file);  // Close the file
@@ -238,29 +237,50 @@ void fetch() {
 // Decode the instruction 
 // : this takes :: inst(int) -> array of all possible needed values based on the instruction
 // some values of array will not be used
-int get_type(int opcode) {
-    if (opcode == 0 || opcode == 1 || opcode == 2 || opcode == 6 ) {
-        return 0; // R1 type
-    } else if (opcode == 3 || opcode == 4 || opcode == 6 || opcode == 10 || opcode == 11) {
-        return 1; // I type
-    } else if (opcode == 7) {
-        return 2; // J type
-    }
-    return -1; // Unknown type
 
-}
+// array is as follows:
+// 0: opcode
+// 1: first register
+// 2: second register
+// 3: third register
+// 4: shamt
+// 5: immediate value
+// 6: address
 int* decode() {
-    int decode[5]; // Array to store decoded values
+    int decode[7]; // Array to store decoded values
     int instruction = pipleine[0]; // Get the instruction from the pipeline
-    int opcode = (instruction >> 28) & 0xF; // Extract the opcode
+    int opcode = (instruction >>  28) & 0xF;// get 1st 4 bits(opcode)
+    decode[0] = opcode; // Store opcode in the first position
 
-
-
-
-    return decode; // Return the decoded values
-
+    if (opcode==0 || opcode==1 || opcode==2 || opcode==5 || opcode==8 || opcode==9){
+        decode[1] = (instruction >> 23) & 0x1F; // get the first register
+        decode[2] = (instruction >> 18) & 0x1F; // Get the second register
+        decode[3] = (instruction >> 13) & 0x1F; // Get the third register
+        decode[4] = (instruction >> 0) & 0x1FFF; // Get the shamt
+        
+    } else if (opcode==3 || opcode==4 || opcode==7 ){
+        decode[1] = (instruction >> 23) & 0x1F; // get the first register
+        decode[2] = (instruction >> 18) & 0x1F; // Get the second register
+        decode[5] = (instruction >> 0) & 0x3FFFF; // Get the immediate value
+    }
+    /*
+    printf("decode[0]: %d\n", decode[0]);
+    print_binary(decode[0]);
+    printf("decode[0]: %d\n", decode[1]);
+    print_binary(decode[1]);
+    printf("decode[0]: %d\n", decode[2]);
+    print_binary(decode[2]);
+    printf("decode[0]: %d\n", decode[3]);
+    print_binary(decode[3]);
+    printf("decode[0]: %d\n", decode[4]);
+    print_binary(decode[4]);
+    printf("decode[0]: %d\n", decode[5]);
+    print_binary(decode[5]);
+    printf("decode[0]: %d\n", decode[6]);
+    print_binary(decode[6]);
+    */
+    return decode;
 }
-
 
 
 // -------------------------------- EXCUTE--------------------------------
@@ -299,6 +319,8 @@ int main() {
         printf("SYSTEM TERMINATED");  // Read instructions from file
     // Print memory contents
     print_memory(0, 5); // Print first 10 memory locations
+    fetch(); // Fetch the instruction
+    decode();
 
     return 0;
 }
