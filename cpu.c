@@ -8,6 +8,10 @@
 #define MEM_SIZE 2048
 #define REG_SIZE 32
 
+
+
+
+int pipleine[5]; // pipeline array
 int mem[MEM_SIZE];// Memory array
 int reg[REG_SIZE];// Register array
 int pc = 0; // Program counter
@@ -66,7 +70,7 @@ void print_memory(int start, int end) {
     for (int i = start; i < min(end+1,MEM_SIZE); i++) {
             printf("Address %d: ", i);
             print_binary(mem[i]);
-            printf("\n");
+
     }
 }
 
@@ -115,7 +119,6 @@ void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     inst  +=p2;
     inst = inst << 18;
     inst +=p3;
-    print_binary(inst);
     mem[memAddr] = inst;
 }
 
@@ -205,6 +208,42 @@ int read_file() {
 }
 
 
+// -------------------------------- FETCH --------------------------------
+// Fetch the instruction from memory
+void fetch() {
+    int instruction = mem[pc]; // Fetch the instruction from memory
+    pipleine[0] = instruction; // Store it in the pipeline
+    pc++; // Increment the program counter  
+}
+
+
+//--------------------------------- DECODE --------------------------------
+// Decode the instruction
+void decode() {
+    int instruction = pipleine[0]; // Get the instruction from the pipeline
+    int opcode = (instruction >> 28) & 0xF; // Extract the opcode
+    int rs = (instruction >> 23) & 0x1F; // Extract the first source register
+    int rt = (instruction >> 18) & 0x1F; // Extract the second source register
+    int rd = (instruction >> 13) & 0x1F; // Extract the destination register
+    int imm = instruction & 0x1FFFF; // Extract the immediate value
+
+    // Print the decoded instruction
+    printf("Decoded instruction: Opcode: %d, rs: %d, rt: %d, rd: %d, imm: %d\n", opcode, rs, rt, rd, imm);
+}
+
+
+
+// -------------------------------- EXCUTION --------------------------------
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -226,10 +265,10 @@ int read_file() {
 
 
 int main() {
-    while (read_file()) {
-        printf("ERRORR:\n");
-    }
-    print_memory(0,5);
+    if (read_file())
+        printf("SYSTEM TERMINATED");  // Read instructions from file
+    // Print memory contents
+    print_memory(0, 5); // Print first 10 memory locations
 
     return 0;
 }
