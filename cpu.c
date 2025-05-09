@@ -11,7 +11,7 @@
 
 
 
-int pipleine[5]; // pipeline array
+
 int mem[MEM_SIZE];// Memory array
 int reg[REG_SIZE];// Register array
 int pc = 0; // Program counter
@@ -96,7 +96,7 @@ int get_opcode(char instruction[]) {
 }
 
 // R type instruction
-void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
+void R_type(char instruction[], int p1, int p2, int p3,int shamt,int memAddr) {
     int opcode= get_opcode(instruction); 
     int inst=opcode;
     inst = inst << 5;
@@ -106,6 +106,7 @@ void R_type(char instruction[], int p1, int p2, int p3,int memAddr) {
     inst = inst << 5;
     inst +=p3;
     inst = inst << 13;
+    inst +=shamt;
     mem[memAddr] = inst;
 }
 
@@ -152,8 +153,8 @@ int read_file() {
         }
         else if 
         (strcmp(word, "ADD") == 0 || strcmp(word, "SUB") == 0 ||
-         strcmp(word, "MUL") == 0 || strcmp(word, "AND") == 0 ||
-         strcmp(word, "LSL") == 0 || strcmp(word, "LSR") == 0 ){
+         strcmp(word, "MUL") == 0 || strcmp(word, "AND") == 0
+         ){
             char inst[10]; 
             strcpy(inst, word);
             fscanf(file, "%99s", word);
@@ -162,8 +163,19 @@ int read_file() {
             param2 = atoi(substring(word, 1, strlen(word)));
             fscanf(file, "%99s", word);
             param3 = atoi(substring(word, 1, strlen(word)));
-            R_type(inst, param1, param2, param3,memAddr++);
+            R_type(inst, param1, param2, param3,0,memAddr++);
          }
+        else if  (strcmp(word, "LSL") == 0 || strcmp(word, "LSR") == 0){
+            char inst[10]; 
+            strcpy(inst, word);
+            fscanf(file, "%99s", word);
+            param1 = atoi(substring(word, 1, strlen(word))); // Extract substring and convert to int
+            fscanf(file, "%99s", word);
+            param2 = atoi(substring(word, 1, strlen(word)));
+            fscanf(file, "%99s", word);
+            int shamt = atoi(substring(word, 0, strlen(word)));
+             R_type(inst, param1, param2, 0,shamt,memAddr++);
+        }
         else if (
         strcmp(word, "MOVI") == 0 || strcmp(word, "JEQ") == 0 ||
         strcmp(word, "XORI") == 0 || strcmp(word, "MOVR") == 0 ||
@@ -208,6 +220,11 @@ int read_file() {
 }
 
 
+
+int pipleine[5]; // pipeline array
+
+
+
 // -------------------------------- FETCH --------------------------------
 // Fetch the instruction from memory
 void fetch() {
@@ -218,22 +235,35 @@ void fetch() {
 
 
 //--------------------------------- DECODE --------------------------------
-// Decode the instruction
-void decode() {
+// Decode the instruction 
+// : this takes :: inst(int) -> array of all possible needed values based on the instruction
+// some values of array will not be used
+int get_type(int opcode) {
+    if (opcode == 0 || opcode == 1 || opcode == 2 || opcode == 6 ) {
+        return 0; // R1 type
+    } else if (opcode == 3 || opcode == 4 || opcode == 6 || opcode == 10 || opcode == 11) {
+        return 1; // I type
+    } else if (opcode == 7) {
+        return 2; // J type
+    }
+    return -1; // Unknown type
+
+}
+int* decode() {
+    int decode[5]; // Array to store decoded values
     int instruction = pipleine[0]; // Get the instruction from the pipeline
     int opcode = (instruction >> 28) & 0xF; // Extract the opcode
-    int rs = (instruction >> 23) & 0x1F; // Extract the first source register
-    int rt = (instruction >> 18) & 0x1F; // Extract the second source register
-    int rd = (instruction >> 13) & 0x1F; // Extract the destination register
-    int imm = instruction & 0x1FFFF; // Extract the immediate value
 
-    // Print the decoded instruction
-    printf("Decoded instruction: Opcode: %d, rs: %d, rt: %d, rd: %d, imm: %d\n", opcode, rs, rt, rd, imm);
+
+
+
+    return decode; // Return the decoded values
+
 }
 
 
 
-// -------------------------------- EXCUTION --------------------------------
+// -------------------------------- EXCUTE--------------------------------
 
 
 
