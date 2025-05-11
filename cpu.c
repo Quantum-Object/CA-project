@@ -17,6 +17,16 @@ int reg[REG_SIZE];// Register array
 int pc = 0; // Program counter
 
 
+int pipleine[5]; // pipeline array
+
+int MemPipe[4]; // Memory pipeline array (flag, inst, reg , address)
+int Mem_endPipe[4]; 
+int WBPipe[3]; // Writeback pipeline array (flag, reg, address/result) "no need for instruction here"
+int WB_endPipe[3]; 
+int decoded[7]; // Decode array to store decoded values
+int excution_input[7]; //same as decoded but the old one (from previous cycle)
+
+
 /*
 function to read from asm.txt and recognize the which one of the 3 types it is 
 
@@ -34,6 +44,24 @@ these turn the (string) int int which is the opcode+m....asm
 
 */
 //-------------------------------- FUNCTIONS THAT C DOES NOT HAVE --------------------------------
+//print array
+void print_array(int arr[], int size) {
+    for (int i = 0; i < size; i++) {
+        printf("%d ", arr[i]);
+    }
+    printf("\n");
+}
+void print_decoded(){
+    printf("Decoded Instruction:\n");
+    printf("Opcode: %d, ", decoded[0]);
+    printf("First Register: %d, ", decoded[1]);
+    printf("Second Register: %d, ", decoded[2]);
+    printf("Third Register: %d, ", decoded[3]);
+    printf("Shamt: %d, ", decoded[4]);
+    printf("Immediate Value: %d, ", decoded[5]);
+    printf("Address: %d\n", decoded[6]);
+}
+
 //min function
 int min(int a, int b) {
     return (a < b) ? a : b;
@@ -220,9 +248,6 @@ int read_file() {
 
 
 
-int pipleine[5]; // pipeline array
-
-
 
 // -------------------------------- FETCH --------------------------------
 // Fetch the instruction from memory
@@ -246,47 +271,187 @@ void fetch() {
 // 4: shamt
 // 5: immediate value
 // 6: address
-int* decode() {
-    int decode[7]; // Array to store decoded values
+void decode() {
+    // Array to store decoded values
     int instruction = pipleine[0]; // Get the instruction from the pipeline
     int opcode = (instruction >>  28) & 0xF;// get 1st 4 bits(opcode)
-    decode[0] = opcode; // Store opcode in the first position
+    decoded[0] = opcode; // Store opcode in the first position
 
     if (opcode==0 || opcode==1 || opcode==2 || opcode==5 || opcode==8 || opcode==9){
-        decode[1] = (instruction >> 23) & 0x1F; // get the first register
-        decode[2] = (instruction >> 18) & 0x1F; // Get the second register
-        decode[3] = (instruction >> 13) & 0x1F; // Get the third register
-        decode[4] = (instruction >> 0) & 0x1FFF; // Get the shamt
+        decoded[1] = (instruction >> 23) & 0x1F; // get the first register
+        decoded[2] = (instruction >> 18) & 0x1F; // Get the second register
+        decoded[3] = (instruction >> 13) & 0x1F; // Get the third register
+        decoded[4] = (instruction >> 0) & 0x1FFF; // Get the shamt
         
     } else if (opcode==3 || opcode==4 || opcode==6 || opcode==10 || opcode==11){
-        decode[1] = (instruction >> 23) & 0x1F; // get the first register
-        decode[2] = (instruction >> 18) & 0x1F; // Get the second register
-        decode[5] = (instruction >> 0) & 0x3FFFF; // Get the immediate value
+        decoded[1] = (instruction >> 23) & 0x1F; // get the first register
+        decoded[2] = (instruction >> 18) & 0x1F; // Get the second register
+        decoded[5] = (instruction >> 0) & 0x3FFFF; // Get the immediate value
     }
     else if (opcode==7){
-        decode[6] = (instruction >> 0) & 0xFFFFFFF; // Get the address
+        decoded[6] = (instruction >> 0) & 0xFFFFFFF; // Get the address
     }
     else {
         printf("Unknown instruction type\n");
-        return NULL;
     }
-    // Print decoded values
-    printf("Decoded Instruction:\n");
-    printf("Opcode: %d\n", decode[0]);
-    printf("First Register: %d\n", decode[1]);
-    printf("Second Register: %d\n", decode[2]);
-    printf("Third Register: %d\n", decode[3]);
-    printf("Shamt: %d\n", decode[4]);
-    printf("Immediate Value: %d\n", decode[5]);
-    printf("Address: %d\n", decode[6]);
-    return decode;
+}
+
+// -------------------------------- EXCUTE--------------------------------
+/*
+ok, here we should do the following:
+1.get the decoded instruction from decode which is stored in the pipeline
+2. check the opcode and based on it call a crossponding function   
+3. compute the result and store it in the register
+NOTE: we still have MEM and WB
+so the following should happen for inst(MOVR,MORM) we stop at we only do the summition and based on some flag 
+we put (flag,sum) in pipeline:mem  -> for the mem to do its job
+but for the others we just put the result in the pipeline:wb but also say where it should be placed and what to be place
+(reg, result) we also need a flag for both to tell if we should WB or not 
+this should also be done in the mem functions.
+*/
+
+void ADD(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int reg3 = excution_input[3]; // Get the third register
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2] = reg[reg2] + reg[reg3]; // Perform addition
+}
+
+void SUB(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int reg3 = excution_input[3]; // Get the third register
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2] = reg[reg2] - reg[reg3]; // Perform addition
+}
+void MUL(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int reg3 = excution_input[3]; // Get the third register
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2] = reg[reg2] * reg[reg3]; // Perform addition
+}
+void MOVI(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2] = excution_input[5]; // get the immediate value
+}
+void JEQ(){
+
+}
+
+void AND(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int reg3 = excution_input[3]; // Get the third register
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2] = reg[reg2] & reg[reg3]; // Perform addition
+}
+
+void XORI(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int imm = excution_input[5]; // get the immediate value
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2] = reg[reg2] ^ imm; // Perform addition
+
+}
+
+void JMP(){
+
+}
+void LSL(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int shmt = excution_input[4]; // Get the shamt
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2]= reg2 << shmt;
+}
+void LSR(){
+    WBPipe[0] = 1; // Set the flag to indicate writeback
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int shmt = excution_input[4]; // Get the shamt
+    WBPipe[1]= reg1; // Store the destination register
+    WBPipe[2]= reg2 >> shmt;
+
+}
+void MOVR(){
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int imm = excution_input[5]; // get the immediate value
+    MemPipe[0] = 1; // Set the flag to indicate writeback
+    MemPipe[1] = excution_input[0];
+    MemPipe[2]= reg1; // Store the destination register
+    MemPipe[2] = reg[reg2] + imm;
+}
+void MOVM(){
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int imm = excution_input[5]; // get the immediate value
+    MemPipe[0] = 1; // Set the flag to indicate writeback
+    MemPipe[1] = excution_input[0];
+    MemPipe[2]= reg1; // Store the destination register
+    MemPipe[2] = reg[reg2] + imm;
 }
 
 
-// -------------------------------- EXCUTE--------------------------------
 
-
-
+void excute(){
+    int opcode = excution_input[0]; // Get the opcode
+    // now every function is different
+    switch (opcode)
+    {
+    case 0:
+        ADD();
+        break;
+    
+    case 1:
+        SUB();
+        break;
+    case 2:
+        MUL();
+        break;
+    case 3:
+        MOVI();
+        break;
+    case 4:
+        JEQ();
+        break;
+    case 5:   
+        AND();
+        break;
+    case 6:
+        XORI();
+        break;
+    case 7:
+        JMP();
+        break;
+    case 8:
+        LSL();
+        break;
+    case 9:
+        LSR();
+        break;
+    case 10:
+        MOVR();
+        break;
+    case 11:
+        MOVM();
+        break;
+    default:    
+        printf("Unknown opcode while Excuting: %d\n", opcode);
+        break;
+    }
+}
 
 
 
@@ -321,8 +486,6 @@ int main() {
     print_memory(0, 5); // Print first 10 memory locations
     fetch(); // Fetch the instruction
     decode();
-    fetch();
-    decode();
-
+    print_decoded();
     return 0;
 }
