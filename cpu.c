@@ -341,8 +341,13 @@ void MOVI(){
     WBPipe[1]= reg1; // Store the destination register
     WBPipe[2] = excution_input[5]; // get the immediate value
 }
-void JEQ(){
-
+void JEQ() {
+    int reg1 = excution_input[1];
+    int reg2 = excution_input[2];
+    int imm = excution_input[5];
+    if (reg[reg1] == reg[reg2]) {
+        pc = pc + 1 + imm;
+    }
 }
 
 void AND(){
@@ -364,8 +369,9 @@ void XORI(){
 
 }
 
-void JMP(){
-
+void JMP() {
+    int addr = excution_input[6];
+    pc = (pc & 0xF0000000) | addr;  // concatenate upper 4 bits of PC with 28-bit address
 }
 void LSL(){
     WBPipe[0] = 1; // Set the flag to indicate writeback
@@ -393,17 +399,19 @@ void MOVR(){
     MemPipe[2]= reg1; // Store the destination register
     MemPipe[2] = reg[reg2] + imm;
 }
-void MOVM(){
-    int reg1 = excution_input[1]; // Get the first register
-    int reg2 = excution_input[2]; // Get the second register
-    int imm = excution_input[5]; // get the immediate value
-    MemPipe[0] = 1; // Set the flag to indicate writeback
-    MemPipe[1] = excution_input[0];
-    MemPipe[2]= reg1; // Store the destination register
-    MemPipe[2] = reg[reg2] + imm;
+
+void MOVM() {
+    int reg1 = excution_input[1]; // index of R1 (source of the value)
+    int reg2 = excution_input[2]; // index of R2 (base register for address)
+    int imm = excution_input[5]; // immediate offset
+
+    int address = reg[reg2] + imm; // compute target address
+
+    // Fill pipeline register for the Memory stage
+    MemPipe[0] = 1;                // Write flag
+    MemPipe[1] = address;         // Address to write to
+    MemPipe[2] = reg[reg1];       // Value to write
 }
-
-
 
 void excute(){
     int opcode = excution_input[0]; // Get the opcode
@@ -478,14 +486,39 @@ void excute(){
 
 
 
+//
+// int main() {
+//     if (read_file())
+//         printf("SYSTEM TERMINATED");  // Read instructions from file
+//     // Print memory contents
+//     print_memory(0, 10); // Print first 10 memory locations
+//     fetch(); // Fetch the instruction
+//     decode();
+//     print_decoded();
+//     return 0;
+// }
 
 int main() {
-    if (read_file())
-        printf("SYSTEM TERMINATED");  // Read instructions from file
-    // Print memory contents
-    print_memory(0, 5); // Print first 10 memory locations
-    fetch(); // Fetch the instruction
-    decode();
-    print_decoded();
+    if (read_file()) {
+        printf("SYSTEM TERMINATED\n");
+    }
+    int i;
+    printf("Initial Memory State:\n");
+    print_memory(0, 10);
+
+    while (i<10) {
+        fetch();          // Call fetch without checking return if it's void
+        decode();
+        print_decoded();
+        i++;
+        // if (execute()) break;   // Execute returns 1 to signal stop
+    }
+
+    // printf("\nFinal Register State:\n");
+    // print_registers();
+
+    printf("\nFinal Memory State:\n");
+    print_memory(0, 10);
+
     return 0;
 }
