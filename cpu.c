@@ -161,90 +161,103 @@ void J_type(char instruction[], int p1,int memAddr) {
     mem[memAddr] = inst;
 
 }
+// function to parse register 
+// This function takes a string token and converts it to an integer register number
+int parse_register(const char *token) {
+    if (token[0] != 'R') {
+        printf("Expected register but got '%s'\n", token);
+        exit(1);
+    }
+
+    char *endptr;
+    int reg = strtol(token + 1, &endptr, 10);
+
+    if (*endptr != '\0' || reg < 0 || reg > 31) {
+        printf("Invalid register: %s\n", token);
+        exit(1);
+    }
+
+    return reg;
+}
 
 
 // Read from asm.txt file 
 int read_file() {
-    int memAddr = 0; // Memory address to store instructions
-    int param1, param2, param3; // for reading registers and values
-    FILE *file = fopen("asm.txt", "r");  
+    int memAddr = 0;
+    int param1, param2, param3;
+    FILE *file = fopen("asm.txt", "r");
+
     if (file == NULL) {
         perror("Error opening file");
         return 1;
     }
 
-    char word[100];  // Buffer to store each word
-    while (fscanf(file, "%99s", word) == 1) {
-        
-        if (word[0] == '#'){
-            fgets(word, sizeof(word), file);
-        }
-        else if 
-        (strcmp(word, "ADD") == 0 || strcmp(word, "SUB") == 0 ||
-         strcmp(word, "MUL") == 0 || strcmp(word, "AND") == 0
-         ){
-            char inst[10]; 
-            strcpy(inst, word);
-            fscanf(file, "%99s", word);
-            param1 = atoi(substring(word, 1, strlen(word))); // Extract substring and convert to int
-            fscanf(file, "%99s", word);
-            param2 = atoi(substring(word, 1, strlen(word)));
-            fscanf(file, "%99s", word);
-            param3 = atoi(substring(word, 1, strlen(word)));
-            R_type(inst, param1, param2, param3,0,memAddr++);
-         }
-        else if  (strcmp(word, "LSL") == 0 || strcmp(word, "LSR") == 0){
-            char inst[10]; 
-            strcpy(inst, word);
-            fscanf(file, "%99s", word);
-            param1 = atoi(substring(word, 1, strlen(word))); // Extract substring and convert to int
-            fscanf(file, "%99s", word);
-            param2 = atoi(substring(word, 1, strlen(word)));
-            fscanf(file, "%99s", word);
-            int shamt = atoi(word); // Extract substring and convert to int);
-             R_type(inst, param1, param2, 0,shamt,memAddr++);
-        }
-        else if (
-        strcmp(word, "MOVI") == 0 || strcmp(word, "JEQ") == 0 ||
-        strcmp(word, "XORI") == 0 || strcmp(word, "MOVR") == 0 ||
-        strcmp(word, "MOVM") == 0 ) {
-            char inst[10]; 
-            strcpy(inst, word);
-            if (strcmp(word,"MOVI")==0){
-                fscanf(file, "%99s", word);
-                param1 = atoi(substring(word, 1, strlen(word)));
-                fscanf(file, "%99s", word);
-                param3 = atoi(word);
-                I_type(inst, param1, 0, param3,memAddr++);
-            }
-            else {
-            param1 = atoi(substring(word, 1, strlen(word)));
-            fscanf(file, "%99s", word);
-            param2 = atoi(substring(word, 1, strlen(word)));
-            fscanf(file, "%99s", word);
-            param3 =  atoi(word); // convert string to int
-            I_type(inst, param1, param2, param3,memAddr++);}
-        }
-        else if (strcmp(word, "JMP")==0){
-            char inst[10]; 
-            strcpy(inst, word);
-            fscanf(file, "%99s", word);
-            param1 = atoi(word);
-            J_type(inst, param1,memAddr++);
+    char word[100];
 
+    while (fscanf(file, "%99s", word) == 1) {
+
+        if (word[0] == '#') {
+            fgets(word, sizeof(word), file); // Skip comment line
+            continue;
         }
+
+        // R-Type: ADD, SUB, MUL, AND
+        if (strcmp(word, "ADD") == 0 || strcmp(word, "SUB") == 0 ||
+            strcmp(word, "MUL") == 0 || strcmp(word, "AND") == 0) {
+
+            char inst[10]; strcpy(inst, word);
+            fscanf(file, "%99s", word); param1 = parse_register(word);
+            fscanf(file, "%99s", word); param2 = parse_register(word);
+            fscanf(file, "%99s", word); param3 = parse_register(word);
+            R_type(inst, param1, param2, param3, 0, memAddr++);
+        }
+
+        // R-Type: LSL, LSR (with shamt)
+        else if (strcmp(word, "LSL") == 0 || strcmp(word, "LSR") == 0) {
+            char inst[10]; strcpy(inst, word);
+            fscanf(file, "%99s", word); param1 = parse_register(word);
+            fscanf(file, "%99s", word); param2 = parse_register(word);
+            fscanf(file, "%99s", word); int shamt = atoi(word);
+            R_type(inst, param1, param2, 0, shamt, memAddr++);
+        }
+
+        // I-Type: MOVI
+        else if (strcmp(word, "MOVI") == 0) {
+            char inst[10]; strcpy(inst, word);
+            fscanf(file, "%99s", word); param1 = parse_register(word);
+            fscanf(file, "%99s", word); param3 = atoi(word);
+            I_type(inst, param1, 0, param3, memAddr++);
+        }
+
+        // I-Type: JEQ, XORI, MOVR, MOVM
+        else if (strcmp(word, "JEQ") == 0 || strcmp(word, "XORI") == 0 ||
+                 strcmp(word, "MOVR") == 0 || strcmp(word, "MOVM") == 0) {
+
+            char inst[10]; strcpy(inst, word);
+            fscanf(file, "%99s", word); param1 = parse_register(word);
+            fscanf(file, "%99s", word); param2 = parse_register(word);
+            fscanf(file, "%99s", word); param3 = atoi(word);
+            I_type(inst, param1, param2, param3, memAddr++);
+        }
+
+        // J-Type: JMP
+        else if (strcmp(word, "JMP") == 0) {
+            char inst[10]; strcpy(inst, word);
+            fscanf(file, "%99s", word); param1 = atoi(word);
+            J_type(inst, param1, memAddr++);
+        }
+
         else {
-            printf("Unknown instruction: %s\n", word);
+            printf("Unknown or malformed instruction: %s\n", word);
+            fclose(file);
             return 1;
         }
-
-
-        printf("%d",memAddr);
     }
 
-    fclose(file);  // Close the file
+    fclose(file);
     return 0;
 }
+
 
 
 
