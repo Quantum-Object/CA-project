@@ -271,6 +271,7 @@ void fetch() {
 // 4: shamt
 // 5: immediate value
 // 6: address
+
 void decode() {
     // Array to store decoded values
     int instruction = pipleine[0]; // Get the instruction from the pipeline
@@ -342,7 +343,12 @@ void MOVI(){
     WBPipe[2] = excution_input[5]; // get the immediate value
 }
 void JEQ(){
-
+    int reg1 = excution_input[1]; // Get the first register
+    int reg2 = excution_input[2]; // Get the second register
+    int address = excution_input[5]; // Get the address
+    if (reg[reg1] == reg[reg2]) {
+        pc += address; // Jump to the address if equal
+    }
 }
 
 void AND(){
@@ -365,7 +371,8 @@ void XORI(){
 }
 
 void JMP(){
-
+    int address = excution_input[6]; // Get the address
+    pc = pc & (0xF000000) | address; // I am not sure about why it takes the the first 4 bits of 
 }
 void LSL(){
     WBPipe[0] = 1; // Set the flag to indicate writeback
@@ -391,7 +398,7 @@ void MOVR(){
     MemPipe[0] = 1; // Set the flag to indicate writeback
     MemPipe[1] = excution_input[0];
     MemPipe[2]= reg1; // Store the destination register
-    MemPipe[2] = reg[reg2] + imm;
+    MemPipe[3] = reg[reg2] + imm;
 }
 void MOVM(){
     int reg1 = excution_input[1]; // Get the first register
@@ -400,7 +407,7 @@ void MOVM(){
     MemPipe[0] = 1; // Set the flag to indicate writeback
     MemPipe[1] = excution_input[0];
     MemPipe[2]= reg1; // Store the destination register
-    MemPipe[2] = reg[reg2] + imm;
+    MemPipe[3] = reg[reg2] + imm;
 }
 
 
@@ -478,14 +485,61 @@ void excute(){
 
 
 
-
 int main() {
-    if (read_file())
-        printf("SYSTEM TERMINATED");  // Read instructions from file
-    // Print memory contents
-    print_memory(0, 5); // Print first 10 memory locations
-    fetch(); // Fetch the instruction
-    decode();
-    print_decoded();
+    if (read_file()) {
+        printf("SYSTEM TERMINATED\n");
+        return 1;
+    }
+
+    int total_instructions = 10; // You can adjust this as needed
+    int cycles = 0;
+
+    printf("Starting Simulation...\n\n");
+
+    for (int i = 0; i < total_instructions; i++) {
+        printf("=== Clock Cycle %d ===\n", ++cycles);
+
+        // Fetch
+        fetch();
+        printf("FETCH: Instruction @ PC=%d loaded into pipeline.\n", pc - 1);
+
+        // Decode
+        decode();
+        print_decoded();
+
+        // Save decoded to execution input
+        for (int j = 0; j < 7; j++) {
+            excution_input[j] = decoded[j];
+        }
+
+        // Execute
+        excute();
+
+        // Display register/memory updates (writeback stub)
+        if (WBPipe[0]) {
+            printf("WB: Writing result %d to Register R%d\n", WBPipe[2], WBPipe[1]);
+            reg[WBPipe[1]] = WBPipe[2];
+            WBPipe[0] = 0;
+        }
+
+        // Stub for memory stage
+        if (MemPipe[0]) {
+            printf("MEM: Operation pending. Implement memory access logic.\n");
+            MemPipe[0] = 0;
+        }
+
+        printf("\n");
+    }
+
+    // Final state of registers and memory
+    printf("=== FINAL REGISTER STATE ===\n");
+    for (int i = 0; i < REG_SIZE; i++) {
+        printf("R%d: %d\n", i, reg[i]);
+    }
+
+    printf("\n=== FINAL MEMORY DUMP (First 32 Words) ===\n");
+    print_memory(0, 31);
+
     return 0;
 }
+
