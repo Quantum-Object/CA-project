@@ -393,7 +393,8 @@ void LSL(){
     int reg2 = excution_input[2]; // Get the second register
     int shmt = excution_input[4]; // Get the shamt
     WBPipe[1]= reg1; // Store the destination register
-    WBPipe[2]= reg2 << shmt;
+    printf("shmt: %d\n", shmt);
+    WBPipe[2]= reg[reg2] << shmt;
 }
 void LSR(){
     WBPipe[0] = 1; // Set the flag to indicate writeback
@@ -401,15 +402,15 @@ void LSR(){
     int reg2 = excution_input[2]; // Get the second register
     int shmt = excution_input[4]; // Get the shamt
     WBPipe[1]= reg1; // Store the destination register
-    WBPipe[2]= reg2 >> shmt;
+    WBPipe[2]= reg[reg2] >> shmt;
 
 }
 void MOVR(){
     int reg1 = excution_input[1]; // Get the first register
     int reg2 = excution_input[2]; // Get the second register
     int imm = excution_input[5]; // get the immediate value
-    MemPipe[0] = 1; // Set the flag to indicate writeback
-    MemPipe[1] = excution_input[0];
+    MemPipe[0] = 1; // Set the flag to indicate it should be done
+    MemPipe[1] = excution_input[0]; // Store the instruction
     MemPipe[2]= reg1; // Store the destination register
     MemPipe[3] = reg[reg2] + imm;
 }
@@ -428,6 +429,7 @@ void MOVM(){
 void excute(){
     int opcode = excution_input[0]; // Get the opcode
     // now every function is different
+    printf("Executing instruction with opcode: %d\n", opcode);
     switch (opcode)
     {
     case 0:
@@ -475,9 +477,47 @@ void excute(){
 
 
 
+// -------------------------------- MEM --------------------------------
+// as definded befoe mempipe,memendPipe is (flag, inst, reg , address) 
+void memory(){
+    if (Mem_endPipe[0]){
+        if (Mem_endPipe[1] == 11){
+            // MOVM
+            int reg1 = Mem_endPipe[2]; // Get the first register
+            int address = Mem_endPipe[3]; // Get the address
+            mem[address] = reg[reg1]; // Store the value in memory
+        }
+        else if (MemPipe[1] == 10){
+            // MOVR
+             int reg1 = Mem_endPipe[2]; // Get the first register
+            int address = Mem_endPipe[3]; // Get the address
+           // now we should do it in the WB not here 
+            WBPipe[0] = 1; // Set the flag to indicate writeback
+            WBPipe[1]= reg1; // Store the destination register
+            WBPipe[2]= mem[address]; // Store the value in memory
+        }
+    }
+    // now move the pipeline to the next stage
+    for (int i = 0; i < 4; i++) {
+        Mem_endPipe[i] = MemPipe[i];
+        MemPipe[i] = 0;
+    }
+}
 
-
-
+void writeback(){
+    if (WB_endPipe[0]){
+            reg[WB_endPipe[1]] = WB_endPipe[2]; // Write the result to the register
+    // now move the pipeline to the next stage
+    for (int i = 0; i < 3; i++) {
+        WB_endPipe[i] = WBPipe[i];
+    }
+    // print the register state
+    printf("Writeback: R%d = %d\n", WBPipe[1], WBPipe[2]);
+    }
+    else{
+        printf("No writeback needed\n");
+    }
+}
 
 
 
@@ -504,55 +544,38 @@ int main() {
         return 1;
     }
 
-    int total_instructions = 10; // You can adjust this as needed
-    int cycles = 0;
+    print_memory(0, 5); // Print the first 10 memory locations
 
-    printf("Starting Simulation...\n\n");
 
-    for (int i = 0; i < total_instructions; i++) {
-        printf("=== Clock Cycle %d ===\n", ++cycles);
-
-        // Fetch
-        fetch();
-        printf("FETCH: Instruction @ PC=%d loaded into pipeline.\n", pc - 1);
-
-        // Decode
-        decode();
-        print_decoded();
-
-        // Save decoded to execution input
-        for (int j = 0; j < 7; j++) {
-            excution_input[j] = decoded[j];
-        }
-
-        // Execute
-        excute();
-
-        // Display register/memory updates (writeback stub)
-        if (WBPipe[0]) {
-            printf("WB: Writing result %d to Register R%d\n", WBPipe[2], WBPipe[1]);
-            reg[WBPipe[1]] = WBPipe[2];
-            WBPipe[0] = 0;
-        }
-
-        // Stub for memory stage
-        if (MemPipe[0]) {
-            printf("MEM: Operation pending. Implement memory access logic.\n");
-            MemPipe[0] = 0;
-        }
-
-        printf("\n");
+    for (int i = 0; i < 100; i++) {
+    printf("%d\n",reg[2]);
+    fetch();
+    decode();
+    // now move the pipeline to the next stage
+    for (int i = 0; i < 7; i++) {
+        
+        excution_input[i] = decoded[i];
     }
+    excute();
+     // now move the pipeline to the next stage
+    for (int i = 0; i < 3; i++) {
+        WB_endPipe[i] = WBPipe[i];
+    }
+    for (int i = 0; i < 4; i++) {
+        Mem_endPipe[i] = MemPipe[i];
+        MemPipe[i] = 0;
+    }
+    memory();
+    writeback();
+}
 
-    // Final state of registers and memory
     printf("=== FINAL REGISTER STATE ===\n");
-    for (int i = 0; i < REG_SIZE; i++) {
+    for (int i = 0; i < 15; i++) {
         printf("R%d: %d\n", i, reg[i]);
     }
 
-    printf("\n=== FINAL MEMORY DUMP (First 32 Words) ===\n");
-    print_memory(0, 31);
-
+    print_memory(1029, 1030); // Print the first 10 memory locations
+    printf("%d\n", 4 << 2);
     return 0;
 }
 
