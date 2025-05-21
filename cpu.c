@@ -252,6 +252,10 @@ int read_file() {
 // -------------------------------- FETCH --------------------------------
 // Fetch the instruction from memory
 void fetch() {
+    if (pc < 0 || pc >= MEM_SIZE) {
+        printf("PC out of bounds: %d\n", pc);
+        exit(1); // or handle error as needed
+    }
     int instruction = mem[pc]; // Fetch the instruction from memory
     pipleine[0] = instruction; // Store it in the pipeline
     pc++; // Increment the program counter  
@@ -373,6 +377,7 @@ void JMP() {
     int addr = excution_input[6];
     pc = (pc & 0xF0000000) | addr;  // concatenate upper 4 bits of PC with 28-bit address
 }
+
 void LSL(){
     WBPipe[0] = 1; // Set the flag to indicate writeback
     int reg1 = excution_input[1]; // Get the first register
@@ -461,6 +466,43 @@ void excute(){
     }
 }
 
+// Memory stage: handles memory read/write for MOVR and MOVM
+void memory() {
+    // MOVR: Load from memory to register
+    if (MemPipe[0] && excution_input[0] == 10) { // MOVR opcode
+        int dest_reg = excution_input[1];
+        int base_reg = excution_input[2];
+        int offset = excution_input[5];
+        int address = reg[base_reg] + offset;
+        WBPipe[0] = 1; // Set writeback flag
+        WBPipe[1] = dest_reg;
+        WBPipe[2] = mem[address]; // Load value from memory
+    }
+    // MOVM: Store register value to memory
+    else if (MemPipe[0] && excution_input[0] == 11) { // MOVM opcode
+        int src_reg = excution_input[1];
+        int base_reg = excution_input[2];
+        int offset = excution_input[5];
+        int address = reg[base_reg] + offset;
+        mem[address] = reg[src_reg]; // Store value to memory
+        // No writeback needed for store
+        WBPipe[0] = 0;
+    }
+    // For other instructions, just pass through
+    else {
+        // No memory operation, pass WBPipe as is
+    }
+}
+
+// Write Back stage: writes result to register file if needed
+void write_back() {
+    if (WBPipe[0]) { // If writeback flag is set
+        int dest_reg = WBPipe[1];
+        int value = WBPipe[2];
+        reg[dest_reg] = value;
+    }
+}
+
 
 
 
@@ -499,26 +541,15 @@ void excute(){
 // }
 
 int main() {
-    if (read_file()) {
-        printf("SYSTEM TERMINATED\n");
-    }
-    int i;
-    printf("Initial Memory State:\n");
-    print_memory(0, 10);
-
-    while (i<10) {
-        fetch();          // Call fetch without checking return if it's void
+    read_file();
+    int i = 0;
+    while (i < 15) { // Limit to 15 instructions
+        fetch();
         decode();
-        print_decoded();
+        excute();
+        memory();
+        write_back();
         i++;
-        // if (execute()) break;   // Execute returns 1 to signal stop
     }
-
-    // printf("\nFinal Register State:\n");
-    // print_registers();
-
-    printf("\nFinal Memory State:\n");
-    print_memory(0, 10);
-
     return 0;
 }
