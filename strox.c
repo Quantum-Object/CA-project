@@ -10,15 +10,37 @@ int memory[MEMORY_SIZE];
 
 typedef enum {NOP, ADD, SUB, MUL, MOVI, JEQ, AND, XORI, JMP, LSL, LSR, MOVR, MOVM} Opcode;
 
+
+
+
+
+typedef enum { TYPE_R, TYPE_I, TYPE_J } InstrType;
+
+typedef struct {
+    int rd, rs1, rs2;
+} RType;
+
+typedef struct {
+    int rd, rs1_or_rs2; // rs2 for MOVM/MOVR
+    int imm;
+    int shamt; // used only for LSL, LSR
+} IType;
+
+typedef struct {
+    int address;
+} JType;
+
 typedef struct {
     Opcode opcode;
-    int rd, rs1, rs2;  // registers
-    int imm;           // immediate value
-    int shamt;         // shift amount
-    int address;       // jump address
-    bool valid;        // if stage contains a valid instruction
-    int pc;            // instruction address
-    int execute_cycle; // how many execute cycles left (for branches)
+    InstrType type;
+    union {
+        RType rtype;
+        IType itype;
+        JType jtype;
+    } data;
+    bool valid;
+    int pc;
+    int execute_cycle;
 } Instruction;
 
 // Pipeline registers
@@ -32,6 +54,35 @@ int registers[NUM_REGS] = {0};
 int pc = 0;
 int instruction_count = 0;
 Instruction instructions[MAX_INSTR];
+
+Instruction make_instruction(Opcode opcode, InstrType type, int pc, int rd, int rs1, int rs2, int imm, int shamt, int address) {
+    Instruction instr;
+    instr.opcode = opcode;
+    instr.type = type;
+    instr.pc = pc;
+    instr.valid = true;
+    instr.execute_cycle = 0;
+
+    switch (type) {
+        case TYPE_R:
+            instr.data.rtype.rd = rd;
+            instr.data.rtype.rs1 = rs1;
+            instr.data.rtype.rs2 = rs2;
+            break;
+        case TYPE_I:
+            instr.data.itype.rd = rd;
+            instr.data.itype.rs1_or_rs2 = rs1;  // or rs2 for some instructions
+            instr.data.itype.imm = imm;
+            instr.data.itype.shamt = shamt;
+            break;
+        case TYPE_J:
+            instr.data.jtype.address = address;
+            break;
+    }
+
+    return instr;
+}
+
 
 // Function to check if pipeline is empty
 bool pipeline_empty() {
@@ -141,7 +192,32 @@ void memory_stage() {
     }
     MEM_WB = EX_MEM;
     MEM_WB.valid = true;
+
+    switch (EX_MEM.opcode) {
+        case MOVR: {
+        int addr = registers[EX_MEM.rs2] + EX_MEM.imm;
+        if (addr >= 0 && addr < MEMORY_SIZE) {
+            registers[EX_MEM.rd] = memory[addr];
+        } else {
+            printf("Memory read error at address %d\n", addr);
+        }
+        break;
+    }
+        case MOVM: {
+        int addr = registers[EX_MEM.rs2] + EX_MEM.imm;
+        if (addr >= 0 && addr < MEMORY_SIZE) {
+            memory[addr] = registers[EX_MEM.rd];
+        } else {
+            printf("Memory write error at address %d\n", addr);
+        }
+        break;
+        }
+
+        default:
+            break;
+    }
 }
+
 
 
 
