@@ -1,0 +1,7 @@
+we need to implement write and memory methods
+
+
+we need to make sure we dont need I R and J types if we do need them we can create three structs instead of one for all instructions
+
+we need to change the pipeline to have ID and EX take 2 cycles instead of one
+and to interleave each memory with each intruction fetch stage since they cannot work at the same time

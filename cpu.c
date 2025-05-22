@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 
 
@@ -20,21 +21,21 @@ int pc = 0; // Program counter
 int pipleine[5]; // pipeline array
 
 int MemPipe[4]; // Memory pipeline array (flag, inst, reg , address)
-int Mem_endPipe[4]; 
+int Mem_endPipe[4];
 int WBPipe[3]; // Writeback pipeline array (flag, reg, address/result) "no need for instruction here"
-int WB_endPipe[3]; 
+int WB_endPipe[3];
 int decoded[7]; // Decode array to store decoded values
 int excution_input[7]; //same as decoded but the old one (from previous cycle)
 
 
 /*
-function to read from asm.txt and recognize the which one of the 3 types it is 
+function to read from asm.txt and recognize the which one of the 3 types it is
 
 then it pass to one of these based on the type
 
 
 
-function for R 
+function for R
 and function for I
 function for J
 
@@ -125,7 +126,7 @@ int get_opcode(char instruction[]) {
 
 // R type instruction
 void R_type(char instruction[], int p1, int p2, int p3,int shamt,int memAddr) {
-    int opcode= get_opcode(instruction); 
+    int opcode= get_opcode(instruction);
     int inst=opcode;
     inst = inst << 5;
     inst +=p1;
@@ -140,7 +141,7 @@ void R_type(char instruction[], int p1, int p2, int p3,int shamt,int memAddr) {
 
 // I type instruction
 void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
-    int opcode= get_opcode(instruction); 
+    int opcode= get_opcode(instruction);
     int inst=opcode;
     inst = inst << 5;
     inst +=p1;
@@ -154,14 +155,14 @@ void I_type(char instruction[], int p1, int p2, int p3,int memAddr) {
 
 // J type instruction
 void J_type(char instruction[], int p1,int memAddr) {
-    int opcode= get_opcode(instruction); 
+    int opcode= get_opcode(instruction);
     int inst=opcode;
     inst = inst << 28;
     inst +=p1;
     mem[memAddr] = inst;
 
 }
-// function to parse register 
+// function to parse register
 // This function takes a string token and converts it to an integer register number
 int parse_register(const char *token) {
     if (token[0] != 'R') {
@@ -181,7 +182,7 @@ int parse_register(const char *token) {
 }
 
 
-// Read from asm.txt file 
+// Read from asm.txt file
 int read_file() {
     int memAddr = 0;
     int param1, param2, param3;
@@ -267,12 +268,12 @@ int read_file() {
 void fetch() {
     int instruction = mem[pc]; // Fetch the instruction from memory
     pipleine[0] = instruction; // Store it in the pipeline
-    pc++; // Increment the program counter  
+    pc++; // Increment the program counter
 }
 
 
 //--------------------------------- DECODE --------------------------------
-// Decode the instruction 
+// Decode the instruction
 // : this takes :: inst(int) -> array of all possible needed values based on the instruction
 // some values of array will not be used
 
@@ -296,7 +297,7 @@ void decode() {
         decoded[2] = (instruction >> 18) & 0x1F; // Get the second register
         decoded[3] = (instruction >> 13) & 0x1F; // Get the third register
         decoded[4] = (instruction >> 0) & 0x1FFF; // Get the shamt
-        
+
     } else if (opcode==3 || opcode==4 || opcode==6 || opcode==10 || opcode==11){
         decoded[1] = (instruction >> 23) & 0x1F; // get the first register
         decoded[2] = (instruction >> 18) & 0x1F; // Get the second register
@@ -314,13 +315,13 @@ void decode() {
 /*
 ok, here we should do the following:
 1.get the decoded instruction from decode which is stored in the pipeline
-2. check the opcode and based on it call a crossponding function   
+2. check the opcode and based on it call a crossponding function
 3. compute the result and store it in the register
 NOTE: we still have MEM and WB
-so the following should happen for inst(MOVR,MORM) we stop at we only do the summition and based on some flag 
+so the following should happen for inst(MOVR,MORM) we stop at we only do the summition and based on some flag
 we put (flag,sum) in pipeline:mem  -> for the mem to do its job
 but for the others we just put the result in the pipeline:wb but also say where it should be placed and what to be place
-(reg, result) we also need a flag for both to tell if we should WB or not 
+(reg, result) we also need a flag for both to tell if we should WB or not
 this should also be done in the mem functions.
 */
 
@@ -385,7 +386,7 @@ void XORI(){
 
 void JMP(){
     int address = excution_input[6]; // Get the address
-    pc = pc & (0xF000000) | address; // I am not sure about why it takes the the first 4 bits of 
+    pc = pc & (0xF000000) | address; // I am not sure about why it takes the the first 4 bits of
 }
 void LSL(){
     WBPipe[0] = 1; // Set the flag to indicate writeback
@@ -426,7 +427,7 @@ void MOVM(){
 
 
 
-void excute(){
+void execute(){
     int opcode = excution_input[0]; // Get the opcode
     // now every function is different
     printf("Executing instruction with opcode: %d\n", opcode);
@@ -435,7 +436,7 @@ void excute(){
     case 0:
         ADD();
         break;
-    
+
     case 1:
         SUB();
         break;
@@ -448,7 +449,7 @@ void excute(){
     case 4:
         JEQ();
         break;
-    case 5:   
+    case 5:
         AND();
         break;
     case 6:
@@ -469,7 +470,7 @@ void excute(){
     case 11:
         MOVM();
         break;
-    default:    
+    default:
         printf("Unknown opcode while Excuting: %d\n", opcode);
         break;
     }
@@ -478,7 +479,7 @@ void excute(){
 
 
 // -------------------------------- MEM --------------------------------
-// as definded befoe mempipe,memendPipe is (flag, inst, reg , address) 
+// as definded befoe mempipe,memendPipe is (flag, inst, reg , address)
 void memory(){
     if (Mem_endPipe[0]){
         if (Mem_endPipe[1] == 11){
@@ -491,7 +492,7 @@ void memory(){
             // MOVR
              int reg1 = Mem_endPipe[2]; // Get the first register
             int address = Mem_endPipe[3]; // Get the address
-           // now we should do it in the WB not here 
+           // now we should do it in the WB not here
             WBPipe[0] = 1; // Set the flag to indicate writeback
             WBPipe[1]= reg1; // Store the destination register
             WBPipe[2]= mem[address]; // Store the value in memory
@@ -504,7 +505,7 @@ void memory(){
     }
 }
 
-void writeback(){
+void write_back(){
     if (WB_endPipe[0]){
             reg[WB_endPipe[1]] = WB_endPipe[2]; // Write the result to the register
     // now move the pipeline to the next stage
@@ -520,62 +521,139 @@ void writeback(){
 }
 
 
+// -------------------------------- MAIN --------------------------------
+#define MAX_INSTR 100
 
+typedef struct {
+    int id;
+    int stage;      // 0: None, 1: IF, 2: ID, 3: EX, 4: MEM, 5: WB, 6: Done
+    int stage_time; // Remaining time in the current stage
+} Instruction;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// void fetch(int id)         { printf("Fetch I%d\n", id); }
+// void decode(int id)        { printf("Decode I%d\n", id); }
+// void execute(int id)       { printf("Execute I%d\n", id); }
+// void memory(int id)        { printf("Memory I%d\n", id); }
+// void write_back(int id)    { printf("Write Back I%d\n", id); }
 
 int main() {
-    if (read_file()) {
-        printf("SYSTEM TERMINATED\n");
-        return 1;
+    int n = 7; // Number of instructions
+    Instruction instr[MAX_INSTR];
+
+    for (int i = 0; i < n; i++) {
+        instr[i].id = i + 1;
+        instr[i].stage = 0;
+        instr[i].stage_time = 0;
     }
 
-    print_memory(0, 5); // Print the first 10 memory locations
+    int clock = 1;
+    int completed = 0;
+    int next_fetch = 1;
+    int fetch_interval = 2;
 
+    while (completed < n) {
+        bool mem_in_use = false;
 
-    for (int i = 0; i < 100; i++) {
-    printf("%d\n",reg[2]);
-    fetch();
-    decode();
-    // now move the pipeline to the next stage
-    for (int i = 0; i < 7; i++) {
-        
-        excution_input[i] = decoded[i];
-    }
-    excute();
-     // now move the pipeline to the next stage
-    for (int i = 0; i < 3; i++) {
-        WB_endPipe[i] = WBPipe[i];
-    }
-    for (int i = 0; i < 4; i++) {
-        Mem_endPipe[i] = MemPipe[i];
-        MemPipe[i] = 0;
-    }
-    memory();
-    writeback();
-}
+        printf("Cycle %d:\n", clock);
 
-    printf("=== FINAL REGISTER STATE ===\n");
-    for (int i = 0; i < 15; i++) {
-        printf("R%d: %d\n", i, reg[i]);
+        for (int i = 0; i < n; i++) {
+            if (instr[i].stage == 0 && clock == next_fetch) {
+                instr[i].stage = 1;
+                instr[i].stage_time = 1;
+                fetch();
+                next_fetch += fetch_interval;
+                break; // Only one IF per cycle
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            switch (instr[i].stage) {
+                case 1: // IF
+                    if (--instr[i].stage_time == 0) {
+                        instr[i].stage = 2;
+                        instr[i].stage_time = 2;
+                    }
+                    break;
+                case 2: // ID
+                    decode();
+                    if (--instr[i].stage_time == 0) {
+                        instr[i].stage = 3;
+                        instr[i].stage_time = 2;
+                    }
+                    break;
+                case 3: // EX
+                    execute();
+                    if (--instr[i].stage_time == 0) {
+                        instr[i].stage = 4;
+                        instr[i].stage_time = 1;
+                    }
+                    break;
+                case 4: // MEM
+                    if (!mem_in_use) {
+                        memory();
+                        mem_in_use = true;
+                        if (--instr[i].stage_time == 0) {
+                            instr[i].stage = 5;
+                            instr[i].stage_time = 1;
+                        }
+                    }
+                    break;
+                case 5: // WB
+                    write_back();
+                    if (--instr[i].stage_time == 0) {
+                        instr[i].stage = 6;
+                        completed++;
+                    }
+                    break;
+            }
+        }
+
+        clock++;
+        printf("\n");
     }
 
-    print_memory(1029, 1030); // Print the first 10 memory locations
-    printf("%d\n", 4 << 2);
+    printf("Total cycles: %d\n", clock - 1);
     return 0;
 }
+
+// int main() {
+//     if (read_file()) {
+//         printf("SYSTEM TERMINATED\n");
+//         return 1;
+//     }
+//
+//     print_memory(0, 5); // Print the first 10 memory locations
+//
+//
+//     for (int i = 0; i < 100; i++) {
+//     printf("%d\n",reg[2]);
+//     fetch();
+//     decode();
+//     // now move the pipeline to the next stage
+//     for (int i = 0; i < 7; i++) {
+//
+//         excution_input[i] = decoded[i];
+//     }
+//     excute();
+//      // now move the pipeline to the next stage
+//     for (int i = 0; i < 3; i++) {
+//         WB_endPipe[i] = WBPipe[i];
+//     }
+//     for (int i = 0; i < 4; i++) {
+//         Mem_endPipe[i] = MemPipe[i];
+//         MemPipe[i] = 0;
+//     }
+//     memory();
+//     writeback();
+// }
+//
+//     printf("=== FINAL REGISTER STATE ===\n");
+//     for (int i = 0; i < 15; i++) {
+//         printf("R%d: %d\n", i, reg[i]);
+//     }
+//
+//     print_memory(1029, 1030); // Print the first 10 memory locations
+//     printf("%d\n", 4 << 2);
+//     return 0;
+// }
 
