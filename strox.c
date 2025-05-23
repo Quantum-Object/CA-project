@@ -33,21 +33,22 @@ typedef struct {
 typedef struct {
     Opcode opcode;
     InstrType type;
-    union {
-        RType rtype;
-        IType itype;
-        JType jtype;
-    } data;
+    int rd;        // destination register
+    int rs1;       // source register 1
+    int rs2;       // source register 2
+    int imm;       // immediate value
+    int shamt;     // shift amount
+    int address;   // jump address
     bool valid;
     int pc;
     int execute_cycle;
 } Instruction;
 
 // Pipeline registers
-Instruction IF_ID = {NOP,0,0,0,0,0,0,false,0,0};
-Instruction ID_EX = {NOP,0,0,0,0,0,0,false,0,0};
-Instruction EX_MEM = {NOP,0,0,0,0,0,0,false,0,0};
-Instruction MEM_WB = {NOP,0,0,0,0,0,0,false,0,0};
+Instruction IF_ID = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
+Instruction ID_EX = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
+Instruction EX_MEM = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
+Instruction MEM_WB = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
 
 // Register file and memory
 int registers[NUM_REGS] = {0};
@@ -65,18 +66,18 @@ Instruction make_instruction(Opcode opcode, InstrType type, int pc, int rd, int 
 
     switch (type) {
         case TYPE_R:
-            instr.data.rtype.rd = rd;
-            instr.data.rtype.rs1 = rs1;
-            instr.data.rtype.rs2 = rs2;
+            instr.rd = rd;
+            instr.rs1 = rs1;
+            instr.rs2 = rs2;
             break;
         case TYPE_I:
-            instr.data.itype.rd = rd;
-            instr.data.itype.rs1_or_rs2 = rs1;  // or rs2 for some instructions
-            instr.data.itype.imm = imm;
-            instr.data.itype.shamt = shamt;
+            instr.rd = rd;
+            instr.rs1 = rs1;  // or rs2 for some instructions
+            instr.imm = imm;
+            instr.shamt = shamt;
             break;
         case TYPE_J:
-            instr.data.jtype.address = address;
+            instr.address = address;
             break;
     }
 
@@ -117,71 +118,62 @@ void execute() {
         EX_MEM.valid = false;
         return;
     }
+    
     EX_MEM = ID_EX;
     EX_MEM.valid = true;
 
-    // For branch/jump, simulate 2 cycles execute stage by decrementing execute_cycle
+    // Handle branches and jumps
     if (EX_MEM.opcode == JEQ || EX_MEM.opcode == JMP) {
-        if (EX_MEM.execute_cycle == 0) EX_MEM.execute_cycle = 2;
-
-        EX_MEM.execute_cycle--;
-
         if (EX_MEM.execute_cycle == 0) {
-            // Branch or jump resolved here
-
+            EX_MEM.execute_cycle = 2;
+        }
+        
+        EX_MEM.execute_cycle--;
+        
+        if (EX_MEM.execute_cycle == 0) {
             if (EX_MEM.opcode == JEQ) {
                 if (registers[EX_MEM.rs1] == registers[EX_MEM.rs2]) {
                     pc = EX_MEM.pc + 1 + EX_MEM.imm;
-                    // Flush IF and ID pipeline stages
                     IF_ID.valid = false;
                     ID_EX.valid = false;
                 }
             } else if (EX_MEM.opcode == JMP) {
-                // PC = PC[31:28] concatenated with address
-                int pc_high = (EX_MEM.pc >> 28) << 28;
-                pc = pc_high | (EX_MEM.address & 0x0FFFFFFF);
+                pc = EX_MEM.address;
                 IF_ID.valid = false;
                 ID_EX.valid = false;
             }
         }
-    } else {
-        EX_MEM.execute_cycle = 0;
-        // Normal ALU ops here
-        switch(EX_MEM.opcode) {
-            case ADD:
-                registers[EX_MEM.rd] = registers[EX_MEM.rs1] + registers[EX_MEM.rs2];
-                break;
-            case SUB:
-                registers[EX_MEM.rd] = registers[EX_MEM.rs1] - registers[EX_MEM.rs2];
-                break;
-            case MUL:
-                registers[EX_MEM.rd] = registers[EX_MEM.rs1] * registers[EX_MEM.rs2];
-                break;
-            case MOVI:
-                registers[EX_MEM.rd] = EX_MEM.imm;
-                break;
-            case AND:
-                registers[EX_MEM.rd] = registers[EX_MEM.rs1] & registers[EX_MEM.rs2];
-                break;
-            case XORI:
-                registers[EX_MEM.rd] = registers[EX_MEM.rs1] ^ EX_MEM.imm;
-                break;
-            case LSL:
-                registers[EX_MEM.rd] = registers[EX_MEM.rs1] << EX_MEM.shamt;
-                break;
-            case LSR:
-                registers[EX_MEM.rd] = ((unsigned int)registers[EX_MEM.rs1]) >> EX_MEM.shamt;
-                break;
-            case MOVR:
-                registers[EX_MEM.rd] = registers[registers[EX_MEM.rs2] + EX_MEM.imm];
-                break;
-            case MOVM:
-                registers[registers[EX_MEM.rs2] + EX_MEM.imm] = registers[EX_MEM.rd];
-                break;
-            default:
-                break;
-        }
+        return;
     }
+
+    // Handle ALU operations
+    switch(EX_MEM.opcode) {
+        case ADD:
+            registers[EX_MEM.rd] = registers[EX_MEM.rs1] + registers[EX_MEM.rs2];
+            break;
+        case SUB:
+            registers[EX_MEM.rd] = registers[EX_MEM.rs1] - registers[EX_MEM.rs2];
+            break;
+        case MUL:
+            registers[EX_MEM.rd] = registers[EX_MEM.rs1] * registers[EX_MEM.rs2];
+            break;
+        case MOVI:
+            registers[EX_MEM.rd] = EX_MEM.imm;
+            break;
+        case AND:
+            registers[EX_MEM.rd] = registers[EX_MEM.rs1] & registers[EX_MEM.rs2];
+            break;
+        case XORI:
+            registers[EX_MEM.rd] = registers[EX_MEM.rs1] ^ EX_MEM.imm;
+            break;
+        case LSL:
+            registers[EX_MEM.rd] = registers[EX_MEM.rs1] << EX_MEM.shamt;
+            break;
+        case LSR:
+            registers[EX_MEM.rd] = ((unsigned int)registers[EX_MEM.rs1]) >> EX_MEM.shamt;
+            break;
+    }
+    registers[0] = 0; // R0 is always 0
 }
 
 // Memory stage - for simplicity just move instruction forward
@@ -190,31 +182,29 @@ void memory_stage() {
         MEM_WB.valid = false;
         return;
     }
+    
     MEM_WB = EX_MEM;
     MEM_WB.valid = true;
 
-    switch (EX_MEM.opcode) {
+    switch (MEM_WB.opcode) {
         case MOVR: {
-        int addr = registers[EX_MEM.rs2] + EX_MEM.imm;
-        if (addr >= 0 && addr < MEMORY_SIZE) {
-            registers[EX_MEM.rd] = memory[addr];
-        } else {
-            printf("Memory read error at address %d\n", addr);
-        }
-        break;
-    }
-        case MOVM: {
-        int addr = registers[EX_MEM.rs2] + EX_MEM.imm;
-        if (addr >= 0 && addr < MEMORY_SIZE) {
-            memory[addr] = registers[EX_MEM.rd];
-        } else {
-            printf("Memory write error at address %d\n", addr);
-        }
-        break;
-        }
-
-        default:
+            int addr = registers[MEM_WB.rs2] + MEM_WB.imm;
+            if (addr >= 0 && addr < MEMORY_SIZE) {
+                registers[MEM_WB.rd] = memory[addr];
+            } else {
+                printf("Memory access error: address %d out of bounds\n", addr);
+            }
             break;
+        }
+        case MOVM: {
+            int addr = registers[MEM_WB.rs2] + MEM_WB.imm;
+            if (addr >= 0 && addr < MEMORY_SIZE) {
+                memory[addr] = registers[MEM_WB.rd];
+            } else {
+                printf("Memory access error: address %d out of bounds\n", addr);
+            }
+            break;
+        }
     }
 }
 
@@ -414,6 +404,7 @@ int main() {
         printf("  IF:  %s\n", IF_ID.valid ? instruction_to_string(IF_ID) : "NOP");
         printf("  ID:  %s\n", ID_EX.valid ? instruction_to_string(ID_EX) : "NOP");
         printf("  EX:  %s\n", EX_MEM.valid ? instruction_to_string(EX_MEM) : "NOP");
+        printf("  MEM: %s\n", MEM_WB.valid ? instruction_to_string(MEM_WB) : "NOP");
         printf("  WB:  %s\n", MEM_WB.valid ? instruction_to_string(MEM_WB) : "NOP");
 
         cycle++;
