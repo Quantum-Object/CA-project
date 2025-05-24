@@ -85,18 +85,47 @@ int saving_execute = 0;
 
 void execute(Instruction inst) {
     switch (inst.opcode) {
-        case ADD: registers[inst.r1] = registers[inst.r2] + registers[inst.r3]; break;
-        case SUB: registers[inst.r1] = registers[inst.r2] - registers[inst.r3]; break;
-        case MUL: registers[inst.r1] = registers[inst.r2] * registers[inst.r3]; break;
-        case MOVI: registers[inst.r1] = inst.immediate; break;
+        case ADD: saving_execute = registers[inst.r2] + registers[inst.r3]; break;
+        case SUB: saving_execute = registers[inst.r2] - registers[inst.r3]; break;
+        case MUL: saving_execute = registers[inst.r2] * registers[inst.r3]; break;
+        case MOVI: saving_execute = inst.immediate; break;
         case JEQ: if (registers[inst.r1] == registers[inst.r2]) PC += inst.immediate; break;
-        case AND: registers[inst.r1] = registers[inst.r2] & registers[inst.r3]; break;
-        case XORI: registers[inst.r1] = registers[inst.r2] ^ inst.immediate; break;
+        case AND: saving_execute = registers[inst.r2] & registers[inst.r3]; break;
+        case XORI: saving_execute = registers[inst.r2] ^ inst.immediate; break;
         case JMP: PC = inst.address; break;
-        case LSL: registers[inst.r1] = registers[inst.r2] << inst.immediate; break;
-        case LSR: registers[inst.r1] = (unsigned int)registers[inst.r2] >> inst.immediate; break;
-        case MOVR: break;
-        case MOVM: break;
+        case LSL: saving_execute = registers[inst.r2] << inst.immediate; break;
+        case LSR: saving_execute = (unsigned int)registers[inst.r2] >> inst.immediate; break;
+        // Remove MOVR and MOVM from here as they'll be handled in memory stage
+    }
+}
+
+void memory_stage(Instruction inst) {
+    switch (inst.opcode) {
+        case MOVR: {
+            int addr = registers[inst.r2] + inst.immediate;
+            if (addr >= 0 && addr < MEMORY_SIZE) {
+                saving_execute = memory[addr];
+            } else {
+                printf("Memory access error: address %d out of bounds\n", addr);
+            }
+            break;
+        }
+        case MOVM: {
+            int addr = registers[inst.r2] + inst.immediate;
+            if (addr >= 0 && addr < MEMORY_SIZE) {
+                memory[addr] = registers[inst.r1];
+            } else {
+                printf("Memory access error: address %d out of bounds\n", addr);
+            }
+            break;
+        }
+    }
+}
+
+void write_back(Instruction inst) {
+    // Don't write back for MOVM or jumps
+    if (inst.opcode != MOVM && inst.opcode != JMP && inst.opcode != JEQ) {
+        registers[inst.r1] = saving_execute;
     }
     registers[0] = 0;  // Enforce zero register
 }
@@ -104,6 +133,7 @@ void execute(Instruction inst) {
 void advance_pipeline() {
     // Clear WB after one cycle
     if (pipeline[4].active && pipeline[4].stage_time >= 1) {
+        write_back(pipeline[4].inst);  // Add write_back here
         pipeline[4].active = 0;
     }
 
@@ -122,7 +152,8 @@ void advance_pipeline() {
             pipeline[3] = pipeline[2];
             pipeline[3].stage_time = 0;
             pipeline[2].active = 0;
-            execute(pipeline[3].inst);
+            execute(pipeline[3].inst);      // Execute first
+            memory_stage(pipeline[3].inst); // Then do memory operations
         }
     }
 
@@ -146,7 +177,7 @@ void advance_pipeline() {
 
     // Fetch new instruction every 2 cycles starting from cycle 1
     if (!pipeline[0].active && !pipeline[3].active &&  // Check MEM isn't active
-        ((clock_cycle -1) % 2 == 0) &&               // Fetch on cycles 1,3,5,...
+        ((clock_cycle - 1) % 2 == 0) &&               // Fetch on cycles 1,3,5,...
         PC < MAX_INSTRUCTIONS && 
         instruction_memory[PC].valid) {
         pipeline[0].inst = instruction_memory[PC++];

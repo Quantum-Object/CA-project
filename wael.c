@@ -1,3 +1,4 @@
+//step 7 left, step 8 wip , step 6 done , step 5 done, step 4 done, step 3 done, step 2 done, step 1 done
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,9 @@
 #define REGISTER_COUNT 32
 #define MAX_INSTRUCTIONS 1024
 #define MAX_LINE_LENGTH 100
+#define MAX_IMM_VALUE 32767    // 2^15 - 1
+#define MIN_IMM_VALUE -32768   // -2^15
+#define MAX_SHIFT_VALUE 31     // 5 bits for shift amount
 
 int32_t memory[MEMORY_SIZE];
 int32_t registers[REGISTER_COUNT];
@@ -175,11 +179,10 @@ void advance_pipeline() {
         }
     }
 
-    // Fetch new instruction every 2 cycles starting from cycle 1
-    if (!pipeline[0].active && !pipeline[3].active &&  // Check MEM isn't active
-        ((clock_cycle - 1) % 2 == 0) &&               // Fetch on cycles 1,3,5,...
+    // Modified fetch condition - remove MEM check and simplify timing
+    if (!pipeline[0].active &&                    // IF stage must be empty
         PC < MAX_INSTRUCTIONS && 
-        instruction_memory[PC].valid) {
+        instruction_memory[PC].valid) {           // Valid instruction exists
         pipeline[0].inst = instruction_memory[PC++];
         pipeline[0].active = 1;
         pipeline[0].stage_time = 0;
@@ -247,10 +250,17 @@ void parse_instruction(char *line, int index) {
             else if (strcmp(mnemonic, "AND") == 0) inst.opcode = AND;
         }
     }
-    // I-type instructions (MOVI, XORI, LSL, LSR)
+    // I-type instructions (MOVI, XORI)
     else if (strcmp(mnemonic, "MOVI") == 0 || strcmp(mnemonic, "XORI") == 0) {
         if (sscanf(line, "%*s %[^,], %d", r1_str, &imm) == 2) {
             r1 = atoi(r1_str + 1);
+            
+            // Validate signed immediate value
+            if (imm > MAX_IMM_VALUE || imm < MIN_IMM_VALUE) {
+                printf("Error: Immediate value %d out of range [%d, %d]\n", 
+                       imm, MIN_IMM_VALUE, MAX_IMM_VALUE);
+                return;
+            }
             
             inst.type = 'I';
             inst.r1 = r1;
@@ -261,11 +271,18 @@ void parse_instruction(char *line, int index) {
             else if (strcmp(mnemonic, "XORI") == 0) inst.opcode = XORI;
         }
     }
-    // LSL, LSR instructions
+    // LSL, LSR instructions - unsigned immediate only
     else if (strcmp(mnemonic, "LSL") == 0 || strcmp(mnemonic, "LSR") == 0) {
         if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
             r1 = atoi(r1_str + 1);
             r2 = atoi(r2_str + 1);
+            
+            // Validate unsigned shift amount
+            if (imm < 0 || imm > MAX_SHIFT_VALUE) {
+                printf("Error: Shift amount %d out of range [0, %d]\n", 
+                       imm, MAX_SHIFT_VALUE);
+                return;
+            }
             
             inst.type = 'I';
             inst.r1 = r1;
@@ -277,11 +294,18 @@ void parse_instruction(char *line, int index) {
             else if (strcmp(mnemonic, "LSR") == 0) inst.opcode = LSR;
         }
     }
-    // Memory instructions (MOVR, MOVM)
+    // Memory instructions (MOVR, MOVM) - signed immediate
     else if (strcmp(mnemonic, "MOVR") == 0 || strcmp(mnemonic, "MOVM") == 0) {
         if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
             r1 = atoi(r1_str + 1);
             r2 = atoi(r2_str + 1);
+            
+            // Validate signed immediate value
+            if (imm > MAX_IMM_VALUE || imm < MIN_IMM_VALUE) {
+                printf("Error: Immediate value %d out of range [%d, %d]\n", 
+                       imm, MIN_IMM_VALUE, MAX_IMM_VALUE);
+                return;
+            }
             
             inst.type = 'I';
             inst.r1 = r1;
@@ -329,6 +353,16 @@ void parse_instruction(char *line, int index) {
     instruction_memory[index] = inst;
 }
 
+// First, add this helper function to check if pipeline is empty
+int pipeline_empty() {
+    for (int i = 0; i < 5; i++) {
+        if (pipeline[i].active) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int main() {
     FILE *file = fopen("asm.txt", "r");
     if (!file) {
@@ -351,11 +385,19 @@ int main() {
     fclose(file);
 
     int total_instructions = index;
-    int total_cycles = 7 + (total_instructions - 1) * 2;  // Increased cycles to ensure completion
+    int total_cycles = 7 + (total_instructions - 1) * 2;
 
-    while (clock_cycle <= total_cycles && (PC < total_instructions || 
-           pipeline[0].active || pipeline[1].active || 
-           pipeline[2].active || pipeline[3].active || pipeline[4].active)) {
+    // Special handling for first instruction - put directly in ID stage
+    if (index > 0) {
+        pipeline[1].inst = instruction_memory[0];  // Put in ID stage
+        pipeline[1].active = 1;
+        pipeline[1].stage_time = 0;  // Start at 0 since it's in ID
+        pipeline[0].active = 0;      // Ensure IF is inactive
+        PC = 1;
+    }
+
+    // Run until pipeline is empty and no more instructions to fetch
+    while (!pipeline_empty() || PC < index) {
         int32_t reg_snapshot[REGISTER_COUNT];
         int mem_snapshot[MEMORY_SIZE];
         memcpy(reg_snapshot, registers, sizeof(registers));
