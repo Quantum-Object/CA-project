@@ -1,205 +1,131 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
+#include <stdint.h>
+#include <ctype.h>
 
-#define MAX_INSTR 1024
-#define NUM_REGS 32
-#define MEMORY_SIZE 1024
-int memory[MEMORY_SIZE];
+#define MEMORY_SIZE 2048
+#define REGISTER_COUNT 32
+#define MAX_INSTRUCTIONS 1024
+#define MAX_LINE_LENGTH 100
 
-typedef enum {NOP, ADD, SUB, MUL, MOVI, JEQ, AND, XORI, JMP, LSL, LSR, MOVR, MOVM} Opcode;
+#define IMM_MIN (-32768)  // 16-bit signed immediate minimum
+#define IMM_MAX 32767     // 16-bit signed immediate maximum
+#define SHIFT_MAX 31      // 5-bit unsigned shift amount maximum
 
+int32_t memory[MEMORY_SIZE];
+int32_t registers[REGISTER_COUNT];
+int32_t PC = 0;
+int clock_cycle = 1;
+int last_fetch_cycle = -2;  // Ensures fetch occurs at cycle 1
 
+enum {
+    ADD, SUB, MUL, MOVI, JEQ, AND, XORI, JMP, LSL, LSR, MOVR, MOVM
+};
 
-
-
-typedef enum { TYPE_R, TYPE_I, TYPE_J } InstrType;
+const char* OPCODE_NAMES[] = {
+    "ADD", "SUB", "MUL", "MOVI", "JEQ", "AND", "XORI", "JMP",
+    "LSL", "LSR", "MOVR", "MOVM"
+};
 
 typedef struct {
-    int rd, rs1, rs2;
-} RType;
-
-typedef struct {
-    int rd, rs1_or_rs2; // rs2 for MOVM/MOVR
-    int imm;
-    int shamt; // used only for LSL, LSR
-} IType;
-
-typedef struct {
+    int opcode;
+    int r1, r2, r3;
+    int immediate;
     int address;
-} JType;
+    char type;
+    int valid;
+} Instruction;
+//should include shamt for left and right shift instructions
 
 typedef struct {
-    Opcode opcode;
-    InstrType type;
-    int rd;        // destination register
-    int rs1;       // source register 1
-    int rs2;       // source register 2
-    int imm;       // immediate value
-    int shamt;     // shift amount
-    int address;   // jump address
-    bool valid;
-    int pc;
-    int execute_cycle;
-} Instruction;
+    Instruction inst;
+    int active;
+    int stage_time;
+} PipelineSlot;
 
-// Pipeline registers
-Instruction IF_ID = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
-Instruction ID_EX = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
-Instruction EX_MEM = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
-Instruction MEM_WB = {NOP, TYPE_R, 0, 0, 0, 0, 0, 0, false, 0, 0};
+Instruction instruction_memory[MAX_INSTRUCTIONS];
+PipelineSlot pipeline[5];
 
-// Register file and memory
-int registers[NUM_REGS] = {0};
-int pc = 0;
-int instruction_count = 0;
-Instruction instructions[MAX_INSTR];
-
-Instruction make_instruction(Opcode opcode, InstrType type, int pc, int rd, int rs1, int rs2, int imm, int shamt, int address) {
-    Instruction instr;
-    instr.opcode = opcode;
-    instr.type = type;
-    instr.pc = pc;
-    instr.valid = true;
-    instr.execute_cycle = 0;
-
-    switch (type) {
-        case TYPE_R:
-            instr.rd = rd;
-            instr.rs1 = rs1;
-            instr.rs2 = rs2;
-            break;
-        case TYPE_I:
-            instr.rd = rd;
-            instr.rs1 = rs1;  // or rs2 for some instructions
-            instr.imm = imm;
-            instr.shamt = shamt;
-            break;
-        case TYPE_J:
-            instr.address = address;
-            break;
+void print_registers_state() {
+    printf("Registers:\n");
+    for (int i = 0; i < REGISTER_COUNT; i++) {
+        printf("R%d = %d\n", i, registers[i]);
     }
-
-    return instr;
+    printf("PC = %d\n", PC);
 }
 
-
-// Function to check if pipeline is empty
-bool pipeline_empty() {
-    return !IF_ID.valid && !ID_EX.valid && !EX_MEM.valid && !MEM_WB.valid;
-}
-
-// Function to fetch instruction
-void fetch() {
-    if (pc >= instruction_count) {
-        IF_ID.valid = false;
-        return;
-    }
-    IF_ID = instructions[pc];
-    IF_ID.valid = true;
-    IF_ID.pc = pc;
-    pc++;
-}
-
-// Function to decode instruction (NOP for simplicity)
-void decode() {
-    if (!IF_ID.valid) {
-        ID_EX.valid = false;
-        return;
-    }
-    ID_EX = IF_ID;
-    ID_EX.valid = true;
-}
-
-// Execute stage
-void execute() {
-    if (!ID_EX.valid) {
-        EX_MEM.valid = false;
-        return;
-    }
-    
-    EX_MEM = ID_EX;
-    EX_MEM.valid = true;
-
-    // Handle branches and jumps
-    if (EX_MEM.opcode == JEQ || EX_MEM.opcode == JMP) {
-        if (EX_MEM.execute_cycle == 0) {
-            EX_MEM.execute_cycle = 2;
+void print_memory_changes(int before[], int after[]) {
+    for (int i = 0; i < MEMORY_SIZE; i++) {
+        if (before[i] != after[i]) {
+            printf("MEM[%d] changed to %d\n", i, after[i]);
         }
-        
-        EX_MEM.execute_cycle--;
-        
-        if (EX_MEM.execute_cycle == 0) {
-            if (EX_MEM.opcode == JEQ) {
-                if (registers[EX_MEM.rs1] == registers[EX_MEM.rs2]) {
-                    pc = EX_MEM.pc + 1 + EX_MEM.imm;
-                    IF_ID.valid = false;
-                    ID_EX.valid = false;
-                }
-            } else if (EX_MEM.opcode == JMP) {
-                pc = EX_MEM.address;
-                IF_ID.valid = false;
-                ID_EX.valid = false;
-            }
-        }
-        return;
     }
-
-    // Handle ALU operations
-    switch(EX_MEM.opcode) {
-        case ADD:
-            registers[EX_MEM.rd] = registers[EX_MEM.rs1] + registers[EX_MEM.rs2];
-            break;
-        case SUB:
-            registers[EX_MEM.rd] = registers[EX_MEM.rs1] - registers[EX_MEM.rs2];
-            break;
-        case MUL:
-            registers[EX_MEM.rd] = registers[EX_MEM.rs1] * registers[EX_MEM.rs2];
-            break;
-        case MOVI:
-            registers[EX_MEM.rd] = EX_MEM.imm;
-            break;
-        case AND:
-            registers[EX_MEM.rd] = registers[EX_MEM.rs1] & registers[EX_MEM.rs2];
-            break;
-        case XORI:
-            registers[EX_MEM.rd] = registers[EX_MEM.rs1] ^ EX_MEM.imm;
-            break;
-        case LSL:
-            registers[EX_MEM.rd] = registers[EX_MEM.rs1] << EX_MEM.shamt;
-            break;
-        case LSR:
-            registers[EX_MEM.rd] = ((unsigned int)registers[EX_MEM.rs1]) >> EX_MEM.shamt;
-            break;
-    }
-    registers[0] = 0; // R0 is always 0
 }
 
-// Memory stage - for simplicity just move instruction forward
-void memory_stage() {
-    if (!EX_MEM.valid) {
-        MEM_WB.valid = false;
-        return;
+void print_register_changes(int32_t before[], int32_t after[]) {
+    for (int i = 1; i < REGISTER_COUNT; i++) {
+        if (before[i] != after[i]) {
+            printf("R%d changed to %d\n", i, after[i]);
+        }
     }
-    
-    MEM_WB = EX_MEM;
-    MEM_WB.valid = true;
+}
 
-    switch (MEM_WB.opcode) {
+void print_pipeline_state() {
+    const char* stage_names[5] = {"IF", "ID", "EX", "MEM", "WB"};
+    printf("\nClock Cycle %d:\n", clock_cycle);
+    for (int i = 0; i < 5; i++) {
+        if (pipeline[i].active) {
+            Instruction inst = pipeline[i].inst;
+            printf("Stage %s: %s R%d R%d R%d IMM=%d\n",
+                   stage_names[i], OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.r3, inst.immediate);
+        } else {
+            printf("Stage %s: --\n", stage_names[i]);
+        }
+    }
+}
+
+int saving_execute = 0;
+
+void execute(Instruction inst) {
+    switch (inst.opcode) {
+        case ADD: saving_execute = registers[inst.r2] + registers[inst.r3]; break;
+        case SUB: saving_execute = registers[inst.r2] - registers[inst.r3]; break;
+        case MUL: saving_execute = registers[inst.r2] * registers[inst.r3]; break;
+        case MOVI: saving_execute = inst.immediate; break;
+        case JEQ: if (registers[inst.r1] == registers[inst.r2]) PC += inst.immediate; break;
+        case AND: saving_execute = registers[inst.r2] & registers[inst.r3]; break;
+        case XORI: 
+            saving_execute = registers[inst.r2] ^ inst.immediate;
+            // Debug print to verify values
+            printf("Debug: XORI: R%d(%d) ^ %d = %d\n", 
+                inst.r1, 
+                registers[inst.r1], 
+                inst.immediate, 
+                saving_execute);
+            break;
+        case JMP: PC = inst.address; break;
+        case LSL: saving_execute = registers[inst.r2] << inst.immediate; break;
+        case LSR: saving_execute = (unsigned int)registers[inst.r2] >> inst.immediate; break;
+        // Remove MOVR and MOVM from here as they'll be handled in memory stage
+    }
+}
+
+void memory_stage(Instruction inst) {
+    switch (inst.opcode) {
         case MOVR: {
-            int addr = registers[MEM_WB.rs2] + MEM_WB.imm;
+            int addr = registers[inst.r2] + inst.immediate;
             if (addr >= 0 && addr < MEMORY_SIZE) {
-                registers[MEM_WB.rd] = memory[addr];
+                saving_execute = memory[addr];
             } else {
                 printf("Memory access error: address %d out of bounds\n", addr);
             }
             break;
         }
         case MOVM: {
-            int addr = registers[MEM_WB.rs2] + MEM_WB.imm;
+            int addr = registers[inst.r2] + inst.immediate;
             if (addr >= 0 && addr < MEMORY_SIZE) {
-                memory[addr] = registers[MEM_WB.rd];
+                memory[addr] = registers[inst.r1];
             } else {
                 printf("Memory access error: address %d out of bounds\n", addr);
             }
@@ -208,212 +134,352 @@ void memory_stage() {
     }
 }
 
-
-
-
-// Writeback stage - already done in execute for simplicity
-void writeback() {
-    // We updated registers in execute stage directly in this example
-    MEM_WB.valid = false;  // Instruction leaves pipeline
-}
-
-// Print register contents
-void print_registers() {
-    printf("Registers after execution:\n");
-    for(int i=0; i<NUM_REGS; i++) {
-        printf("R%d: %d\n", i, registers[i]);
+void write_back(Instruction inst) {
+    // Don't write back for MOVM or jumps
+    if (inst.opcode != MOVM && inst.opcode != JMP && inst.opcode != JEQ) {
+        registers[inst.r1] = saving_execute;
     }
+    registers[0] = 0;  // Enforce zero register
 }
 
-
-Opcode get_opcode(const char *mnemonic) {
-    if (strcmp(mnemonic, "ADD") == 0) return ADD;
-    if (strcmp(mnemonic, "SUB") == 0) return SUB;
-    if (strcmp(mnemonic, "MUL") == 0) return MUL;
-    if (strcmp(mnemonic, "MOVI") == 0) return MOVI;
-    if (strcmp(mnemonic, "JEQ") == 0) return JEQ;
-    if (strcmp(mnemonic, "AND") == 0) return AND;
-    if (strcmp(mnemonic, "XORI") == 0) return XORI;
-    if (strcmp(mnemonic, "JMP") == 0) return JMP;
-    if (strcmp(mnemonic, "LSL") == 0) return LSL;
-    if (strcmp(mnemonic, "LSR") == 0) return LSR;
-    if (strcmp(mnemonic, "MOVR") == 0) return MOVR;
-    if (strcmp(mnemonic, "MOVM") == 0) return MOVM;
-    return NOP;
-}
-
-bool parse_register(const char *token, int *reg_num) {
-    if (token[0] != 'R') return false;
-    int r = atoi(token + 1);
-    if (r < 0 || r >= NUM_REGS) return false;
-    *reg_num = r;
-    return true;
-}
-
-bool parse_instruction_line(char *line, Instruction *inst, int line_num) {
-    char op[10], r1[10], r2[10], r3[10];
-    int matched = sscanf(line, "%s %s %s %s", op, r1, r2, r3);
-
-    inst->opcode = get_opcode(op);
-    inst->valid = true;
-    inst->pc = line_num;
-    inst->execute_cycle = 0;
-
-    if (inst->opcode == NOP) return false;
-
-    switch (inst->opcode) {
-        case ADD: case SUB: case MUL: case AND:
-            if (matched != 4 || !parse_register(r1, &inst->rd) || !parse_register(r2, &inst->rs1) || !parse_register(r3, &inst->rs2))
-                return false;
-            break;
-        case MOVI: case XORI:
-            if (matched != 3 || !parse_register(r1, &inst->rd)) return false;
-            inst->imm = atoi(r2);
-            break;
-        case LSL: case LSR:
-            if (matched != 4 || !parse_register(r1, &inst->rd) || !parse_register(r2, &inst->rs1))
-                return false;
-            inst->shamt = atoi(r3);
-            break;
-        case MOVR: case MOVM:
-            if (matched != 4 || !parse_register(r1, &inst->rd) || !parse_register(r2, &inst->rs2))
-                return false;
-            inst->imm = atoi(r3);
-            break;
-        case JEQ:
-            if (matched != 4 || !parse_register(r1, &inst->rs1) || !parse_register(r2, &inst->rs2))
-                return false;
-            inst->imm = atoi(r3);
-            break;
-        case JMP:
-            if (matched != 2) return false;
-            inst->address = atoi(r1);
-            break;
-        default:
-            return false;
-    }
-    return true;
-}
-
-void load_instructions_from_file(const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        perror("Error opening instruction file");
-        exit(1);
+void advance_pipeline() {
+    // Clear WB after one cycle
+    if (pipeline[4].active && pipeline[4].stage_time >= 1) {
+        write_back(pipeline[4].inst);  // Add write_back here
+        pipeline[4].active = 0;
     }
 
-    char line[128];
-    int line_num = 0;
-    while (fgets(line, sizeof(line), file)) {
-        // Skip comments or blank lines
-        if (line[0] == '#' || strlen(line) <= 1) continue;
-
-        Instruction inst;
-        if (parse_instruction_line(line, &inst, line_num)) {
-            instructions[instruction_count++] = inst;
-        } else {
-            printf("Skipping invalid instruction at line %d: %s", line_num + 1, line);
+    // Move MEM to WB after one cycle
+    if (pipeline[3].active && pipeline[3].stage_time >= 1) {
+        if (!pipeline[4].active) {
+            pipeline[4] = pipeline[3];
+            pipeline[4].stage_time = 0;
+            pipeline[3].active = 0;
         }
-        line_num++;
     }
 
-    fclose(file);
+    // Move EX to MEM after two cycles
+    if (pipeline[2].active && pipeline[2].stage_time >= 2) {
+        if (!pipeline[3].active) {
+            pipeline[3] = pipeline[2];
+            pipeline[3].stage_time = 0;
+            pipeline[2].active = 0;
+            execute(pipeline[3].inst);      // Execute first
+            memory_stage(pipeline[3].inst); // Then do memory operations
+        }
+    }
+
+    // Move ID to EX after two cycles
+    if (pipeline[1].active && pipeline[1].stage_time >= 2) {
+        if (!pipeline[2].active) {
+            pipeline[2] = pipeline[1];
+            pipeline[2].stage_time = 0;
+            pipeline[1].active = 0;
+        }
+    }
+
+    // Move IF to ID after one cycle
+    if (pipeline[0].active && pipeline[0].stage_time >= 1) {
+        if (!pipeline[1].active) {
+            pipeline[1] = pipeline[0];
+            pipeline[1].stage_time = 0;
+            pipeline[0].active = 0;
+        }
+    }
+
+    // Fetch new instruction every 2 cycles starting from cycle 1
+    if (!pipeline[0].active && !pipeline[3].active &&  // Check MEM isn't active
+        ((clock_cycle - 1) % 2 == 0) &&               // Fetch on cycles 1,3,5,...
+        PC < MAX_INSTRUCTIONS && 
+        instruction_memory[PC].valid) {
+        pipeline[0].inst = instruction_memory[PC++];
+        pipeline[0].active = 1;
+        pipeline[0].stage_time = 0;
+    }
+
+    // Increment stage times for active stages
+    for (int i = 0; i < 5; i++) {
+        if (pipeline[i].active) {
+            pipeline[i].stage_time++;
+        }
+    }
 }
 
-char* instruction_to_string(Instruction inst) {
-    static char buffer[100];
-    if (!inst.valid || inst.opcode == NOP) {
-        snprintf(buffer, sizeof(buffer), "NOP");
-        return buffer;
+int is_comment_or_empty(const char* line) {
+    while (*line) {
+        if (isspace(*line)) {
+            line++;
+            continue;
+        }
+        return *line == '#' || *line == '\0' || *line == '\n';
     }
-
-    switch (inst.opcode) {
-        case ADD:
-            snprintf(buffer, sizeof(buffer), "ADD R%d, R%d, R%d", inst.rd, inst.rs1, inst.rs2);
-            break;
-        case SUB:
-            snprintf(buffer, sizeof(buffer), "SUB R%d, R%d, R%d", inst.rd, inst.rs1, inst.rs2);
-            break;
-        case MUL:
-            snprintf(buffer, sizeof(buffer), "MUL R%d, R%d, R%d", inst.rd, inst.rs1, inst.rs2);
-            break;
-        case MOVI:
-            snprintf(buffer, sizeof(buffer), "MOVI R%d, %d", inst.rd, inst.imm);
-            break;
-        case XORI:
-            snprintf(buffer, sizeof(buffer), "XORI R%d, %d", inst.rd, inst.imm);
-            break;
-        case AND:
-            snprintf(buffer, sizeof(buffer), "AND R%d, R%d, R%d", inst.rd, inst.rs1, inst.rs2);
-            break;
-        case LSL:
-            snprintf(buffer, sizeof(buffer), "LSL R%d, R%d, %d", inst.rd, inst.rs1, inst.shamt);
-            break;
-        case LSR:
-            snprintf(buffer, sizeof(buffer), "LSR R%d, R%d, %d", inst.rd, inst.rs1, inst.shamt);
-            break;
-        case MOVR:
-            snprintf(buffer, sizeof(buffer), "MOVR R%d, R%d, %d", inst.rd, inst.rs2, inst.imm);
-            break;
-        case MOVM:
-            snprintf(buffer, sizeof(buffer), "MOVM R%d, R%d, %d", inst.rd, inst.rs2, inst.imm);
-            break;
-        case JEQ:
-            snprintf(buffer, sizeof(buffer), "JEQ R%d, R%d, %d", inst.rs1, inst.rs2, inst.imm);
-            break;
-        case JMP:
-            snprintf(buffer, sizeof(buffer), "JMP %d", inst.address);
-            break;
-        default:
-            snprintf(buffer, sizeof(buffer), "NOP");
-            break;
-    }
-    return buffer;
+    return 1;
 }
 
+void parse_instruction(char *line, int index) {
+    Instruction inst = {0};  // Initialize all fields to 0
+    char mnemonic[10];
+    char r1_str[10], r2_str[10], r3_str[10];
+    int r1 = 0, r2 = 0, r3 = 0, imm = 0;
 
+    // Remove newline if present
+    char *newline = strchr(line, '\n');
+    if (newline) *newline = 0;
 
+    // Initialize strings
+    memset(mnemonic, 0, sizeof(mnemonic));
+    memset(r1_str, 0, sizeof(r1_str));
+    memset(r2_str, 0, sizeof(r2_str));
+    memset(r3_str, 0, sizeof(r3_str));
+
+    // Parse instruction type
+    if (sscanf(line, "%s", mnemonic) != 1) {
+        printf("Error: Could not parse instruction: %s\n", line);
+        return;
+    }
+
+    // R-type instructions (ADD, SUB, MUL, AND)
+    if (strcmp(mnemonic, "ADD") == 0 || strcmp(mnemonic, "SUB") == 0 || 
+        strcmp(mnemonic, "MUL") == 0 || strcmp(mnemonic, "AND") == 0) {
+        
+        if (sscanf(line, "%*s %[^,], %[^,], %s", r1_str, r2_str, r3_str) == 3) {
+            r1 = atoi(r1_str + 1);  // Skip 'R' prefix
+            r2 = atoi(r2_str + 1);
+            r3 = atoi(r3_str + 1);
+            
+            inst.type = 'R';
+            inst.r1 = r1;
+            inst.r2 = r2;
+            inst.r3 = r3;
+            inst.valid = 1;
+            
+            if (strcmp(mnemonic, "ADD") == 0) inst.opcode = ADD;
+            else if (strcmp(mnemonic, "SUB") == 0) inst.opcode = SUB;
+            else if (strcmp(mnemonic, "MUL") == 0) inst.opcode = MUL;
+            else if (strcmp(mnemonic, "AND") == 0) inst.opcode = AND;
+        }
+    }
+    // I-type instructions (MOVI, XORI, LSL, LSR)
+    else if (strcmp(mnemonic, "MOVI") == 0 || strcmp(mnemonic, "XORI") == 0) {
+        // For MOVI: format is "MOVI Rx, imm"
+        // For XORI: format is "XORI Rx, Ry, imm"
+        if (strcmp(mnemonic, "MOVI") == 0) {
+            if (sscanf(line, "%*s %[^,], %d", r1_str, &imm) == 2) {
+                r1 = atoi(r1_str + 1);
+                inst.type = 'I';
+                inst.r1 = r1;
+                inst.immediate = imm;
+                inst.valid = 1;
+                inst.opcode = MOVI;
+            }
+        } else { // XORI case
+            if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
+                r1 = atoi(r1_str + 1);
+                r2 = atoi(r2_str + 1);
+                inst.type = 'I';
+                inst.r1 = r1;
+                inst.r2 = r2;
+                inst.immediate = imm;
+                inst.valid = 1;
+                inst.opcode = XORI;
+                
+                // Debug print
+                printf("Debug: Parsed XORI: R%d, R%d, %d\n", inst.r1, inst.r2, inst.immediate);
+            } else {
+                printf("Error: Invalid XORI format (expected 'XORI Rx, Ry, imm'): %s\n", line);
+                inst.valid = 0;
+            }
+        }
+
+        // Immediate value validation for MOVI and XORI
+        if (imm < IMM_MIN || imm > IMM_MAX) {
+            printf("Error: Immediate value %d out of range [%d, %d] in instruction: %s\n", 
+                   imm, IMM_MIN, IMM_MAX, line);
+            inst.valid = 0;
+            return;
+        }
+    }
+    // LSL, LSR instructions
+    else if (strcmp(mnemonic, "LSL") == 0 || strcmp(mnemonic, "LSR") == 0) {
+        if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
+            r1 = atoi(r1_str + 1);
+            r2 = atoi(r2_str + 1);
+            
+            inst.type = 'I';
+            inst.r1 = r1;
+            inst.r2 = r2;
+            inst.immediate = imm;
+            inst.valid = 1;
+            
+            if (strcmp(mnemonic, "LSL") == 0) inst.opcode = LSL;
+            else if (strcmp(mnemonic, "LSR") == 0) inst.opcode = LSR;
+        }
+
+        // Immediate value validation for LSL and LSR
+        if (imm < 0 || imm > SHIFT_MAX) {
+            printf("Error: Shift amount %d out of range [0, %d] in instruction: %s\n", 
+                   imm, SHIFT_MAX, line);
+            inst.valid = 0;
+            return;
+        }
+    }
+    // Memory instructions (MOVR, MOVM)
+    else if (strcmp(mnemonic, "MOVR") == 0 || strcmp(mnemonic, "MOVM") == 0) {
+        if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
+            r1 = atoi(r1_str + 1);
+            r2 = atoi(r2_str + 1);
+            
+            inst.type = 'I';
+            inst.r1 = r1;
+            inst.r2 = r2;
+            inst.immediate = imm;
+            inst.valid = 1;
+            
+            if (strcmp(mnemonic, "MOVR") == 0) inst.opcode = MOVR;
+            else if (strcmp(mnemonic, "MOVM") == 0) inst.opcode = MOVM;
+        }
+
+        // Memory offset validation for MOVR and MOVM
+        if (imm < IMM_MIN || imm > IMM_MAX) {
+            printf("Error: Memory offset %d out of range [%d, %d] in instruction: %s\n", 
+                   imm, IMM_MIN, IMM_MAX, line);
+            inst.valid = 0;
+            return;
+        }
+    }
+    // Jump instructions (JMP, JEQ)
+    else if (strcmp(mnemonic, "JMP") == 0) {
+        if (sscanf(line, "%*s %d", &imm) == 1) {
+            inst.type = 'J';
+            inst.address = imm;
+            inst.valid = 1;
+            inst.opcode = JMP;
+        }
+    }
+    else if (strcmp(mnemonic, "JEQ") == 0) {
+        if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
+            r1 = atoi(r1_str + 1);
+            r2 = atoi(r2_str + 1);
+            
+            inst.type = 'I';
+            inst.r1 = r1;
+            inst.r2 = r2;
+            inst.immediate = imm;
+            inst.valid = 1;
+            inst.opcode = JEQ;
+        }
+
+        // Branch offset validation for JEQ
+        if (imm < IMM_MIN || imm > IMM_MAX) {
+            printf("Error: Branch offset %d out of range [%d, %d] in instruction: %s\n", 
+                   imm, IMM_MIN, IMM_MAX, line);
+            inst.valid = 0;
+            return;
+        }
+    }
+
+    // Validate register numbers
+    if (inst.valid) {
+        if (inst.r1 < 0 || inst.r1 >= REGISTER_COUNT ||
+            inst.r2 < 0 || inst.r2 >= REGISTER_COUNT ||
+            inst.r3 < 0 || inst.r3 >= REGISTER_COUNT) {
+            printf("Error: Invalid register number in instruction: %s\n", line);
+            inst.valid = 0;
+        }
+    }
+
+    // Debug information for parsed instructions
+    if (inst.valid) {
+        printf("\nDebug: Parsed instruction %d:\n", index);
+        printf("  Mnemonic: %s\n", mnemonic);
+        printf("  Type: %c\n", inst.type);
+        printf("  Opcode: %s\n", OPCODE_NAMES[inst.opcode]);
+        
+        switch (inst.type) {
+            case 'R':
+                printf("  Registers: R%d, R%d, R%d\n", inst.r1, inst.r2, inst.r3);
+                break;
+            case 'I':
+                if (inst.opcode == MOVI || inst.opcode == XORI) {
+                    printf("  Register: R%d, Immediate: %d\n", inst.r1, inst.immediate);
+                } else if (inst.opcode == LSL || inst.opcode == LSR) {
+                    printf("  Registers: R%d, R%d, Shift: %d\n", inst.r1, inst.r2, inst.immediate);
+                } else if (inst.opcode == MOVR || inst.opcode == MOVM) {
+                    printf("  Registers: R%d, R%d, Offset: %d\n", inst.r1, inst.r2, inst.immediate);
+                }
+                break;
+            case 'J':
+                printf("  Jump Address: %d\n", inst.address);
+                break;
+        }
+        printf("  Original line: %s\n", line);
+    } else {
+        printf("\nDebug: Invalid instruction at index %d: %s\n", index, line);
+    }
+
+    instruction_memory[index] = inst;
+}
 
 int main() {
-    load_instructions_from_file("asm.txt");
-    int cycle = 1;
-
-    while (1) {
-
-        if (cycle % 5 == 0 || (pc >= instruction_count && pipeline_empty())) {
-            print_registers();
-        }
-
-        printf("\n===== Clock Cycle %d =====\n", cycle);
-
-        writeback();
-        execute();
-
-        if (cycle % 2 == 1) {
-            // Odd cycle: include Fetch, skip Memory
-            decode();
-            fetch();
-        } else {
-            // Even cycle: include Memory, skip Fetch
-            memory_stage();
-            decode(); // Still decode before execute
-        }
-
-        // Print pipeline state
-        printf("Pipeline:\n");
-        printf("  IF:  %s\n", IF_ID.valid ? instruction_to_string(IF_ID) : "NOP");
-        printf("  ID:  %s\n", ID_EX.valid ? instruction_to_string(ID_EX) : "NOP");
-        printf("  EX:  %s\n", EX_MEM.valid ? instruction_to_string(EX_MEM) : "NOP");
-        printf("  MEM: %s\n", MEM_WB.valid ? instruction_to_string(MEM_WB) : "NOP");
-        printf("  WB:  %s\n", MEM_WB.valid ? instruction_to_string(MEM_WB) : "NOP");
-
-        cycle++;
-
-        if (pc >= instruction_count && pipeline_empty()) {
-            break;
-        }
+    FILE *file = fopen("asm.txt", "r");
+    if (!file) {
+        printf("Error opening asm.txt\n");
+        return 1;
     }
 
-    print_registers();
+    // Register initial values (you can modify)
+    // registers[2] = 5;
+    // registers[3] = 10;
+    // registers[4] = 2;
+    // registers[11] = 4;
+
+    char line[MAX_LINE_LENGTH];
+    int index = 0;
+    while (fgets(line, sizeof(line), file) && index < MAX_INSTRUCTIONS) {
+        if (is_comment_or_empty(line)) continue;
+        parse_instruction(line, index++);
+    }
+    fclose(file);
+
+    int total_instructions = index;
+    int total_cycles = 7 + (total_instructions - 1) * 2;  // Increased cycles to ensure completion
+
+    while (clock_cycle <= total_cycles && (PC < total_instructions || 
+           pipeline[0].active || pipeline[1].active || 
+           pipeline[2].active || pipeline[3].active || pipeline[4].active)) {
+
+        // Add debug print
+        printf("\nDebug: PC=%d, total_inst=%d, Pipeline states: %d %d %d %d %d\n", 
+               PC, total_instructions,
+               pipeline[0].active, pipeline[1].active, pipeline[2].active,
+               pipeline[3].active, pipeline[4].active);
+    
+        int32_t reg_snapshot[REGISTER_COUNT];
+        int mem_snapshot[MEMORY_SIZE];
+        memcpy(reg_snapshot, registers, sizeof(registers));
+        memcpy(mem_snapshot, memory, sizeof(memory));
+
+        print_pipeline_state();
+        advance_pipeline();
+        print_register_changes(reg_snapshot, registers);
+        print_memory_changes(mem_snapshot, memory);
+        print_registers_state();
+        clock_cycle++;
+    }
+
+    printf("\nFinal State:\n");
+    print_registers_state();
+    printf("\nMemory (non-zero values):\n");
+    for (int i = 0; i < MEMORY_SIZE; i++) {
+        if (memory[i] != 0)
+            printf("MEM[%d] = %d\n", i, memory[i]);
+    }
+
     return 0;
 }
+
+
+//immediate value validation for MOVI and XORI
+// memory offset validation for MOVR and MOVM
+// branch offset validation for JEQ
+// shift amount validation for LSL and LSR

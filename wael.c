@@ -1,4 +1,3 @@
-//step 7 left, step 8 wip , step 6 done , step 5 done, step 4 done, step 3 done, step 2 done, step 1 done
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,15 +8,16 @@
 #define REGISTER_COUNT 32
 #define MAX_INSTRUCTIONS 1024
 #define MAX_LINE_LENGTH 100
-#define MAX_IMM_VALUE 32767    // 2^15 - 1
-#define MIN_IMM_VALUE -32768   // -2^15
-#define MAX_SHIFT_VALUE 31     // 5 bits for shift amount
+
+#define IMM_MIN (-32768)  // 16-bit signed immediate minimum
+#define IMM_MAX 32767     // 16-bit signed immediate maximum
+#define SHIFT_MAX 31      // 5-bit unsigned shift amount maximum
 
 int32_t memory[MEMORY_SIZE];
 int32_t registers[REGISTER_COUNT];
 int32_t PC = 0;
 int clock_cycle = 1;
-int last_fetch_cycle = -2;  // Ensures fetch occurs at cycle 1
+int total_instructions = 0;  // Add this global variable
 
 enum {
     ADD, SUB, MUL, MOVI, JEQ, AND, XORI, JMP, LSL, LSR, MOVR, MOVM
@@ -41,7 +41,7 @@ typedef struct {
 typedef struct {
     Instruction inst;
     int active;
-    int stage_time;
+    int cycles_in_stage;  // Track cycles spent in current stage
 } PipelineSlot;
 
 Instruction instruction_memory[MAX_INSTRUCTIONS];
@@ -135,63 +135,74 @@ void write_back(Instruction inst) {
 }
 
 void advance_pipeline() {
-    // Clear WB after one cycle
-    if (pipeline[4].active && pipeline[4].stage_time >= 1) {
-        write_back(pipeline[4].inst);  // Add write_back here
+    // Increment cycle counters for active stages
+    for (int i = 0; i < 5; i++) {
+        if (pipeline[i].active) {
+            pipeline[i].cycles_in_stage++;
+        }
+    }
+
+    // Write-Back Stage (Stage 5) - 1 cycle
+    if (pipeline[4].active && pipeline[4].cycles_in_stage >= 1) {
+        write_back(pipeline[4].inst);
         pipeline[4].active = 0;
     }
 
-    // Move MEM to WB after one cycle
-    if (pipeline[3].active && pipeline[3].stage_time >= 1) {
+    // Memory Stage (Stage 4) - 1 cycle
+    if (pipeline[3].active && pipeline[3].cycles_in_stage >= 1) {
         if (!pipeline[4].active) {
+            memory_stage(pipeline[3].inst);
             pipeline[4] = pipeline[3];
-            pipeline[4].stage_time = 0;
+            pipeline[4].cycles_in_stage = 0;
             pipeline[3].active = 0;
         }
     }
 
-    // Move EX to MEM after two cycles
-    if (pipeline[2].active && pipeline[2].stage_time >= 2) {
+    // Execute Stage (Stage 3) - 2 cycles
+    if (pipeline[2].active && pipeline[2].cycles_in_stage >= 2) {
         if (!pipeline[3].active) {
+            execute(pipeline[2].inst);
             pipeline[3] = pipeline[2];
-            pipeline[3].stage_time = 0;
+            pipeline[3].cycles_in_stage = 0;
             pipeline[2].active = 0;
-            execute(pipeline[3].inst);      // Execute first
-            memory_stage(pipeline[3].inst); // Then do memory operations
         }
     }
 
-    // Move ID to EX after two cycles
-    if (pipeline[1].active && pipeline[1].stage_time >= 2) {
+    // Decode Stage (ID) - Stage 2
+    if (pipeline[1].active && pipeline[1].cycles_in_stage >= 2) {
         if (!pipeline[2].active) {
             pipeline[2] = pipeline[1];
-            pipeline[2].stage_time = 0;
+            pipeline[2].cycles_in_stage = 0;
             pipeline[1].active = 0;
         }
     }
 
-    // Move IF to ID after one cycle
-    if (pipeline[0].active && pipeline[0].stage_time >= 1) {
+    // Handle instruction fetch (IF) - Stage 1
+    // First move IF to ID after one cycle
+    if (pipeline[0].active && pipeline[0].cycles_in_stage >= 1) {
         if (!pipeline[1].active) {
             pipeline[1] = pipeline[0];
-            pipeline[1].stage_time = 0;
+            pipeline[1].cycles_in_stage = 0;
             pipeline[0].active = 0;
         }
     }
 
-    // Modified fetch condition - remove MEM check and simplify timing
-    if (!pipeline[0].active &&                    // IF stage must be empty
-        PC < MAX_INSTRUCTIONS && 
-        instruction_memory[PC].valid) {           // Valid instruction exists
+    // Then fetch new instruction every 2 cycles starting from cycle 1
+    if (!pipeline[0].active && !pipeline[3].active &&    // IF empty and MEM not active
+        ((clock_cycle - 1) % 2 == 0) &&                 // Fetch on cycles 1,3,5,...
+        PC < total_instructions && 
+        instruction_memory[PC].valid &&
+        clock_cycle > 1) {                              // Add this condition to skip first cycle
+        
         pipeline[0].inst = instruction_memory[PC++];
         pipeline[0].active = 1;
-        pipeline[0].stage_time = 0;
+        pipeline[0].cycles_in_stage = 0;
     }
 
-    // Increment stage times for active stages
+    // Increment cycle counters for active stages
     for (int i = 0; i < 5; i++) {
         if (pipeline[i].active) {
-            pipeline[i].stage_time++;
+            pipeline[i].cycles_in_stage++;
         }
     }
 }
@@ -250,39 +261,51 @@ void parse_instruction(char *line, int index) {
             else if (strcmp(mnemonic, "AND") == 0) inst.opcode = AND;
         }
     }
-    // I-type instructions (MOVI, XORI)
+    // I-type instructions (MOVI, XORI, LSL, LSR)
     else if (strcmp(mnemonic, "MOVI") == 0 || strcmp(mnemonic, "XORI") == 0) {
-        if (sscanf(line, "%*s %[^,], %d", r1_str, &imm) == 2) {
-            r1 = atoi(r1_str + 1);
-            
-            // Validate signed immediate value
-            if (imm > MAX_IMM_VALUE || imm < MIN_IMM_VALUE) {
-                printf("Error: Immediate value %d out of range [%d, %d]\n", 
-                       imm, MIN_IMM_VALUE, MAX_IMM_VALUE);
-                return;
+        // For MOVI: format is "MOVI Rx, imm"
+        // For XORI: format is "XORI Rx, Ry, imm"
+        if (strcmp(mnemonic, "MOVI") == 0) {
+            if (sscanf(line, "%*s %[^,], %d", r1_str, &imm) == 2) {
+                r1 = atoi(r1_str + 1);
+                inst.type = 'I';
+                inst.r1 = r1;
+                inst.immediate = imm;
+                inst.valid = 1;
+                inst.opcode = MOVI;
             }
-            
-            inst.type = 'I';
-            inst.r1 = r1;
-            inst.immediate = imm;
-            inst.valid = 1;
-            
-            if (strcmp(mnemonic, "MOVI") == 0) inst.opcode = MOVI;
-            else if (strcmp(mnemonic, "XORI") == 0) inst.opcode = XORI;
+        } else { // XORI case
+            if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
+                r1 = atoi(r1_str + 1);
+                r2 = atoi(r2_str + 1);
+                inst.type = 'I';
+                inst.r1 = r1;
+                inst.r2 = r2;
+                inst.immediate = imm;
+                inst.valid = 1;
+                inst.opcode = XORI;
+                
+                // // Debug print
+                // printf("Debug: Parsed XORI: R%d, R%d, %d\n", inst.r1, inst.r2, inst.immediate);
+            } else {
+                printf("Error: Invalid XORI format (expected 'XORI Rx, Ry, imm'): %s\n", line);
+                inst.valid = 0;
+            }
+        }
+
+        // Immediate value validation for MOVI and XORI
+        if (imm < IMM_MIN || imm > IMM_MAX) {
+            printf("Error: Immediate value %d out of range [%d, %d] in instruction: %s\n", 
+                   imm, IMM_MIN, IMM_MAX, line);
+            inst.valid = 0;
+            return;
         }
     }
-    // LSL, LSR instructions - unsigned immediate only
+    // LSL, LSR instructions
     else if (strcmp(mnemonic, "LSL") == 0 || strcmp(mnemonic, "LSR") == 0) {
         if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
             r1 = atoi(r1_str + 1);
             r2 = atoi(r2_str + 1);
-            
-            // Validate unsigned shift amount
-            if (imm < 0 || imm > MAX_SHIFT_VALUE) {
-                printf("Error: Shift amount %d out of range [0, %d]\n", 
-                       imm, MAX_SHIFT_VALUE);
-                return;
-            }
             
             inst.type = 'I';
             inst.r1 = r1;
@@ -293,19 +316,20 @@ void parse_instruction(char *line, int index) {
             if (strcmp(mnemonic, "LSL") == 0) inst.opcode = LSL;
             else if (strcmp(mnemonic, "LSR") == 0) inst.opcode = LSR;
         }
+
+        // Immediate value validation for LSL and LSR
+        if (imm < 0 || imm > SHIFT_MAX) {
+            printf("Error: Shift amount %d out of range [0, %d] in instruction: %s\n", 
+                   imm, SHIFT_MAX, line);
+            inst.valid = 0;
+            return;
+        }
     }
-    // Memory instructions (MOVR, MOVM) - signed immediate
+    // Memory instructions (MOVR, MOVM)
     else if (strcmp(mnemonic, "MOVR") == 0 || strcmp(mnemonic, "MOVM") == 0) {
         if (sscanf(line, "%*s %[^,], %[^,], %d", r1_str, r2_str, &imm) == 3) {
             r1 = atoi(r1_str + 1);
             r2 = atoi(r2_str + 1);
-            
-            // Validate signed immediate value
-            if (imm > MAX_IMM_VALUE || imm < MIN_IMM_VALUE) {
-                printf("Error: Immediate value %d out of range [%d, %d]\n", 
-                       imm, MIN_IMM_VALUE, MAX_IMM_VALUE);
-                return;
-            }
             
             inst.type = 'I';
             inst.r1 = r1;
@@ -315,6 +339,14 @@ void parse_instruction(char *line, int index) {
             
             if (strcmp(mnemonic, "MOVR") == 0) inst.opcode = MOVR;
             else if (strcmp(mnemonic, "MOVM") == 0) inst.opcode = MOVM;
+        }
+
+        // Memory offset validation for MOVR and MOVM
+        if (imm < IMM_MIN || imm > IMM_MAX) {
+            printf("Error: Memory offset %d out of range [%d, %d] in instruction: %s\n", 
+                   imm, IMM_MIN, IMM_MAX, line);
+            inst.valid = 0;
+            return;
         }
     }
     // Jump instructions (JMP, JEQ)
@@ -338,6 +370,14 @@ void parse_instruction(char *line, int index) {
             inst.valid = 1;
             inst.opcode = JEQ;
         }
+
+        // Branch offset validation for JEQ
+        if (imm < IMM_MIN || imm > IMM_MAX) {
+            printf("Error: Branch offset %d out of range [%d, %d] in instruction: %s\n", 
+                   imm, IMM_MIN, IMM_MAX, line);
+            inst.valid = 0;
+            return;
+        }
     }
 
     // Validate register numbers
@@ -350,17 +390,36 @@ void parse_instruction(char *line, int index) {
         }
     }
 
-    instruction_memory[index] = inst;
-}
-
-// First, add this helper function to check if pipeline is empty
-int pipeline_empty() {
-    for (int i = 0; i < 5; i++) {
-        if (pipeline[i].active) {
-            return 0;
+    // Debug information for parsed instructions
+    if (inst.valid) {
+        // printf("\nDebug: Parsed instruction %d:\n", index);
+        // printf("  Mnemonic: %s\n", mnemonic);
+        // printf("  Type: %c\n", inst.type);
+        // printf("  Opcode: %s\n", OPCODE_NAMES[inst.opcode]);
+        
+        switch (inst.type) {
+            case 'R':
+                printf("  Registers: R%d, R%d, R%d\n", inst.r1, inst.r2, inst.r3);
+                break;
+            case 'I':
+                if (inst.opcode == MOVI || inst.opcode == XORI) {
+                    printf("  Register: R%d, Immediate: %d\n", inst.r1, inst.immediate);
+                } else if (inst.opcode == LSL || inst.opcode == LSR) {
+                    printf("  Registers: R%d, R%d, Shift: %d\n", inst.r1, inst.r2, inst.immediate);
+                } else if (inst.opcode == MOVR || inst.opcode == MOVM) {
+                    printf("  Registers: R%d, R%d, Offset: %d\n", inst.r1, inst.r2, inst.immediate);
+                }
+                break;
+            case 'J':
+                printf("  Jump Address: %d\n", inst.address);
+                break;
         }
+        printf("  Original line: %s\n", line);
+    } else {
+        printf("\nDebug: Invalid instruction at index %d: %s\n", index, line);
     }
-    return 1;
+
+    instruction_memory[index] = inst;
 }
 
 int main() {
@@ -384,20 +443,29 @@ int main() {
     }
     fclose(file);
 
-    int total_instructions = index;
-    int total_cycles = 7 + (total_instructions - 1) * 2;
-
-    // Special handling for first instruction - put directly in ID stage
-    if (index > 0) {
-        pipeline[1].inst = instruction_memory[0];  // Put in ID stage
-        pipeline[1].active = 1;
-        pipeline[1].stage_time = 0;  // Start at 0 since it's in ID
-        pipeline[0].active = 0;      // Ensure IF is inactive
-        PC = 1;
+    total_instructions = index;
+    
+    // First cycle should fetch immediately
+    if (total_instructions > 0) {
+        pipeline[0].inst = instruction_memory[PC++];
+        pipeline[0].active = 1;
+        pipeline[0].cycles_in_stage = 0;
     }
 
-    // Run until pipeline is empty and no more instructions to fetch
-    while (!pipeline_empty() || PC < index) {
+    // Run until all instructions complete and pipeline is empty
+    while (1) {
+        // Check if we're done:
+        // 1. All instructions have been fetched (PC >= total_instructions)
+        // 2. All pipeline stages are empty
+        if (PC >= total_instructions && 
+            !pipeline[0].active && !pipeline[1].active && 
+            !pipeline[2].active && !pipeline[3].active && !pipeline[4].active) {
+            printf("\nProgram completed at cycle %d\n", clock_cycle-1);
+            break;
+        }
+        
+    
+        // Take snapshots for change tracking
         int32_t reg_snapshot[REGISTER_COUNT];
         int mem_snapshot[MEMORY_SIZE];
         memcpy(reg_snapshot, registers, sizeof(registers));
@@ -405,10 +473,17 @@ int main() {
 
         print_pipeline_state();
         advance_pipeline();
-        print_register_changes(reg_snapshot, registers);
-        print_memory_changes(mem_snapshot, memory);
-        print_registers_state();
+        // print_register_changes(reg_snapshot, registers);
+        // print_memory_changes(mem_snapshot, memory);
+        // print_registers_state()
         clock_cycle++;
+
+
+        // Safety check (remove in production)
+        if (clock_cycle > 1000) {
+            printf("Warning: Maximum cycle count exceeded. Possible infinite loop.\n");
+            break;
+        }
     }
 
     printf("\nFinal State:\n");
@@ -421,3 +496,9 @@ int main() {
 
     return 0;
 }
+
+
+//immediate value validation for MOVI and XORI
+// memory offset validation for MOVR and MOVM
+// branch offset validation for JEQ
+// shift amount validation for LSL and LSR
