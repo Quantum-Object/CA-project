@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <ctype.h>
+#include "cJSON.h" // You'd need to add a C JSON library like cJSON
 
 #define DATA_MEMORY_SIZE 1024     // Data memory: addresses 0-1023
 #define INSTRUCTION_MEMORY_SIZE 1024  // Instruction memory: addresses 0-1023
@@ -53,7 +54,7 @@ PipelineSlot pipeline[5];
 // Memory access functions with proper segmentation
 int32_t read_data_memory(int address) {
     if (address < 0 || address >= DATA_MEMORY_SIZE) {
-        printf("Error: Data memory address %d out of bounds [0-%d]\n", address, DATA_MEMORY_SIZE-1);
+        fprintf(stderr, "Error: Data memory address %d out of bounds [0-%d]\\n", address, DATA_MEMORY_SIZE-1);
         return 0;  // Return 0 for invalid access
     }
     return data_memory[address];
@@ -61,7 +62,7 @@ int32_t read_data_memory(int address) {
 
 void write_data_memory(int address, int32_t value) {
     if (address < 0 || address >= DATA_MEMORY_SIZE) {
-        printf("Error: Data memory address %d out of bounds [0-%d]\n", address, DATA_MEMORY_SIZE-1);
+        fprintf(stderr, "Error: Data memory address %d out of bounds [0-%d]\\n", address, DATA_MEMORY_SIZE-1);
         return;  // Don't write for invalid access
     }
     data_memory[address] = value;
@@ -69,7 +70,7 @@ void write_data_memory(int address, int32_t value) {
 
 Instruction read_instruction_memory(int address) {
     if (address < 0 || address >= INSTRUCTION_MEMORY_SIZE) {
-        printf("Error: Instruction memory address %d out of bounds [0-%d]\n", address, INSTRUCTION_MEMORY_SIZE-1);
+        fprintf(stderr, "Error: Instruction memory address %d out of bounds [0-%d]\\n", address, INSTRUCTION_MEMORY_SIZE-1);
         Instruction invalid = {0};  // Return invalid instruction
         return invalid;
     }
@@ -78,38 +79,38 @@ Instruction read_instruction_memory(int address) {
 
 void write_instruction_memory(int address, Instruction inst) {
     if (address < 0 || address >= INSTRUCTION_MEMORY_SIZE) {
-        printf("Error: Instruction memory address %d out of bounds [0-%d]\n", address, INSTRUCTION_MEMORY_SIZE-1);
+        fprintf(stderr, "Error: Instruction memory address %d out of bounds [0-%d]\\n", address, INSTRUCTION_MEMORY_SIZE-1);
         return;
     }
     instruction_memory[address] = inst;
 }
 
 void print_registers_state() {
-    printf("Registers:\n");
+    fprintf(stderr, "Registers:\\n");
     for (int i = 0; i < REGISTER_COUNT; i++) {
-        printf("R%d = %d\n", i, registers[i]);
+        fprintf(stderr, "R%d = %d\\n", i, registers[i]);
     }
-    printf("PC = %d\n", PC);
+    fprintf(stderr, "PC = %d\\n", PC);
 }
 
 void print_memory_state() {
-    printf("\nData Memory (non-zero values):\n");
+    fprintf(stderr, "\\nData Memory (non-zero values):\\n");
     int found_data = 0;
     for (int i = 0; i < DATA_MEMORY_SIZE; i++) {
         if (data_memory[i] != 0) {
-            printf("DATA[%d] = %d\n", i, data_memory[i]);
+            fprintf(stderr, "DATA[%d] = %d\\n", i, data_memory[i]);
             found_data = 1;
         }
     }
     if (!found_data) {
-        printf("All data memory locations are zero\n");
+        fprintf(stderr, "All data memory locations are zero\\n");
     }
     
-    printf("\nInstruction Memory (loaded instructions):\n");
+    fprintf(stderr, "\\nInstruction Memory (loaded instructions):\\n");
     for (int i = 0; i < total_instructions; i++) {
         if (instruction_memory[i].valid) {
-            printf("INST[%d]: %s", i, OPCODE_NAMES[instruction_memory[i].opcode]);
-            printf("\n");
+            fprintf(stderr, "INST[%d]: %s", i, OPCODE_NAMES[instruction_memory[i].opcode]);
+            fprintf(stderr, "\\n");
         }
     }
 }
@@ -117,73 +118,73 @@ void print_memory_state() {
 void print_register_changes(int32_t before[], int32_t after[]) {
     for (int i = 1; i < REGISTER_COUNT; i++) {
         if (before[i] != after[i]) {
-            printf("R%d changed to %d\n", i, after[i]);
+            fprintf(stderr, "R%d changed to %d\\n", i, after[i]);
         }
     }
 }
 
 void print_pipeline_state() {
     const char* stage_names[5] = {"IF", "ID", "EX", "MEM", "WB"};
-    printf("\nClock Cycle %d:\n", clock_cycle - 1);
+    fprintf(stderr, "\\nClock Cycle %d:\\n", clock_cycle - 1);
     for (int i = 0; i < 5; i++) {
         if (pipeline[i].active) {
             Instruction inst = pipeline[i].inst;
-            printf("Stage %s: ", stage_names[i]);
+            fprintf(stderr, "Stage %s: ", stage_names[i]);
             
             // Print instruction details
             if (inst.opcode == JMP) {
-                printf("%s %d", OPCODE_NAMES[inst.opcode], inst.address);
+                fprintf(stderr, "%s %d", OPCODE_NAMES[inst.opcode], inst.address);
             } else if (inst.opcode == MOVI) {
-                printf("%s R%d, %d", OPCODE_NAMES[inst.opcode], inst.r1, inst.immediate);
+                fprintf(stderr, "%s R%d, %d", OPCODE_NAMES[inst.opcode], inst.r1, inst.immediate);
             } else if (inst.opcode == JEQ) {
-                printf("%s R%d, R%d, %d", OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.immediate);
+                fprintf(stderr, "%s R%d, R%d, %d", OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.immediate);
             } else if (inst.type == 'R') {
-                printf("%s R%d, R%d, R%d", OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.r3);
+                fprintf(stderr, "%s R%d, R%d, R%d", OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.r3);
             } else {
-                printf("%s R%d, R%d, %d", OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.immediate);
+                fprintf(stderr, "%s R%d, R%d, %d", OPCODE_NAMES[inst.opcode], inst.r1, inst.r2, inst.immediate);
             }
             
             // Print input values for each stage
             switch (i) {
                 case 0: // IF
-                    printf(" (Fetching from PC=%d)", PC-1);
+                    fprintf(stderr, " (Fetching from PC=%d)", PC-1);
                     break;
                 case 1: // ID
-                    printf(" (Decoding)");
+                    fprintf(stderr, " (Decoding)");
                     break;
                 case 2: // EX
                     if (inst.type == 'R') {
-                        printf(" (R%d=%d, R%d=%d)", inst.r2, registers[inst.r2], inst.r3, registers[inst.r3]);
+                        fprintf(stderr, " (R%d=%d, R%d=%d)", inst.r2, registers[inst.r2], inst.r3, registers[inst.r3]);
                     } else if (inst.opcode == MOVI) {
-                        printf(" (IMM=%d)", inst.immediate);
+                        fprintf(stderr, " (IMM=%d)", inst.immediate);
                     } else if (inst.opcode == JEQ) {
-                        printf(" (R%d=%d, R%d=%d)", inst.r1, registers[inst.r1], inst.r2, registers[inst.r2]);
+                        fprintf(stderr, " (R%d=%d, R%d=%d)", inst.r1, registers[inst.r1], inst.r2, registers[inst.r2]);
                     } else {
-                        printf(" (R%d=%d, IMM=%d)", inst.r2, registers[inst.r2], inst.immediate);
+                        fprintf(stderr, " (R%d=%d, IMM=%d)", inst.r2, registers[inst.r2], inst.immediate);
                     }
                     break;
                 case 3: // MEM
                     if (inst.opcode == MOVR) {
                         int addr = registers[inst.r2] + inst.immediate;
-                        printf(" (Addr=%d, DATA[%d]=%d)", addr, addr, (addr >= 0 && addr < DATA_MEMORY_SIZE) ? data_memory[addr] : -1);
+                        fprintf(stderr, " (Addr=%d, DATA[%d]=%d)", addr, addr, (addr >= 0 && addr < DATA_MEMORY_SIZE) ? data_memory[addr] : -1);
                     } else if (inst.opcode == MOVM) {
                         int addr = registers[inst.r2] + inst.immediate;
-                        printf(" (Addr=%d, Store R%d=%d)", addr, inst.r1, registers[inst.r1]);
+                        fprintf(stderr, " (Addr=%d, Store R%d=%d)", addr, inst.r1, registers[inst.r1]);
                     } else {
-                        printf(" (Pass-through)");
+                        fprintf(stderr, " (Pass-through)");
                     }
                     break;
                 case 4: // WB
                     if (inst.opcode != MOVM && inst.opcode != JMP && inst.opcode != JEQ) {
-                        printf(" (Writing %d to R%d)", saving_execute, inst.r1);
+                        fprintf(stderr, " (Writing %d to R%d)", saving_execute, inst.r1);
                     } else {
-                        printf(" (No writeback)");
+                        fprintf(stderr, " (No writeback)");
                     }
                     break;
             }
-            printf("\n");
+            fprintf(stderr, "\\n");
         } else {
-            printf("Stage %s: --\n", stage_names[i]);
+            fprintf(stderr, "Stage %s: --\\n", stage_names[i]);
         }
     }
 }
@@ -192,48 +193,48 @@ void execute(Instruction inst) {
     switch (inst.opcode) {
         case ADD: 
             saving_execute = registers[inst.r2] + registers[inst.r3];
-            printf("EX Stage: ADD result = %d + %d = %d\n", registers[inst.r2], registers[inst.r3], saving_execute);
+            fprintf(stderr, "EX Stage: ADD result = %d + %d = %d\\n", registers[inst.r2], registers[inst.r3], saving_execute);
             break;
         case SUB: 
             saving_execute = registers[inst.r2] - registers[inst.r3];
-            printf("EX Stage: SUB result = %d - %d = %d\n", registers[inst.r2], registers[inst.r3], saving_execute);
+            fprintf(stderr, "EX Stage: SUB result = %d - %d = %d\\n", registers[inst.r2], registers[inst.r3], saving_execute);
             break;
         case MUL: 
             saving_execute = registers[inst.r2] * registers[inst.r3];
-            printf("EX Stage: MUL result = %d * %d = %d\n", registers[inst.r2], registers[inst.r3], saving_execute);
+            fprintf(stderr, "EX Stage: MUL result = %d * %d = %d\\n", registers[inst.r2], registers[inst.r3], saving_execute);
             break;
         case MOVI: 
             saving_execute = inst.immediate;
-            printf("EX Stage: MOVI result = %d\n", saving_execute);
+            fprintf(stderr, "EX Stage: MOVI result = %d\\n", saving_execute);
             break;
         case JEQ: 
-            printf("EX Stage: JEQ comparing R%d=%d with R%d=%d\n", inst.r1, registers[inst.r1], inst.r2, registers[inst.r2]);
+            fprintf(stderr, "EX Stage: JEQ comparing R%d=%d with R%d=%d\\n", inst.r1, registers[inst.r1], inst.r2, registers[inst.r2]);
             if (registers[inst.r1] == registers[inst.r2]) {
-                printf("EX Stage: Branch taken, PC changed from %d to %d\n", PC, inst.immediate);
+                fprintf(stderr, "EX Stage: Branch taken, PC changed from %d to %d\\n", PC, inst.immediate);
                 PC = inst.immediate;  // Direct jump to absolute address, not relative
             } else {
-                printf("EX Stage: Branch not taken\n");
+                fprintf(stderr, "EX Stage: Branch not taken\\n");
             }
             break;
         case AND: 
             saving_execute = registers[inst.r2] & registers[inst.r3];
-            printf("EX Stage: AND result = %d & %d = %d\n", registers[inst.r2], registers[inst.r3], saving_execute);
+            fprintf(stderr, "EX Stage: AND result = %d & %d = %d\\n", registers[inst.r2], registers[inst.r3], saving_execute);
             break;
         case XORI: 
             saving_execute = registers[inst.r2] ^ inst.immediate;
-            printf("EX Stage: XORI result = %d ^ %d = %d\n", registers[inst.r2], inst.immediate, saving_execute);
+            fprintf(stderr, "EX Stage: XORI result = %d ^ %d = %d\\n", registers[inst.r2], inst.immediate, saving_execute);
             break;
         case JMP: 
-            printf("EX Stage: JMP, PC changed from %d to %d\n", PC, inst.address);
+            fprintf(stderr, "EX Stage: JMP, PC changed from %d to %d\\n", PC, inst.address);
             PC = inst.address;
             break;
         case LSL: 
             saving_execute = registers[inst.r2] << inst.immediate;
-            printf("EX Stage: LSL result = %d << %d = %d\n", registers[inst.r2], inst.immediate, saving_execute);
+            fprintf(stderr, "EX Stage: LSL result = %d << %d = %d\\n", registers[inst.r2], inst.immediate, saving_execute);
             break;
         case LSR: 
             saving_execute = (unsigned int)registers[inst.r2] >> inst.immediate;
-            printf("EX Stage: LSR result = %d >> %d = %d\n", registers[inst.r2], inst.immediate, saving_execute);
+            fprintf(stderr, "EX Stage: LSR result = %d >> %d = %d\\n", registers[inst.r2], inst.immediate, saving_execute);
             break;
     }
 }
@@ -245,7 +246,7 @@ void memory_stage(Instruction inst) {
             int32_t value = read_data_memory(addr);
             if (addr >= 0 && addr < DATA_MEMORY_SIZE) {
                 saving_execute = value;
-                printf("MEM Stage: Loading DATA[%d]=%d\n", addr, value);
+                fprintf(stderr, "MEM Stage: Loading DATA[%d]=%d\\n", addr, value);
             }
             break;
         }
@@ -253,7 +254,7 @@ void memory_stage(Instruction inst) {
             int addr = registers[inst.r2] + inst.immediate;
             if (addr >= 0 && addr < DATA_MEMORY_SIZE) {
                 int32_t old_value = read_data_memory(addr);
-                printf("MEM Stage: DATA[%d] changed from %d to %d\n", addr, old_value, registers[inst.r1]);
+                fprintf(stderr, "MEM Stage: DATA[%d] changed from %d to %d\\n", addr, old_value, registers[inst.r1]);
                 write_data_memory(addr, registers[inst.r1]);
             }
             break;
@@ -264,11 +265,11 @@ void memory_stage(Instruction inst) {
 void write_back(Instruction inst) {
     // Don't write back for MOVM or jumps
     if (inst.opcode != MOVM && inst.opcode != JMP && inst.opcode != JEQ) {
-        printf("WB Stage: R%d changed from %d to %d\n", inst.r1, registers[inst.r1], saving_execute);
+        fprintf(stderr, "WB Stage: R%d changed from %d to %d\\n", inst.r1, registers[inst.r1], saving_execute);
         registers[inst.r1] = saving_execute;
     }
     if (registers[0] != 0) {
-        printf("WB Stage: R0 enforced to 0 (was %d)\n", registers[0]);
+        fprintf(stderr, "WB Stage: R0 enforced to 0 (was %d)\\n", registers[0]);
         registers[0] = 0;  // Enforce zero register
     }
 }
@@ -324,18 +325,18 @@ void advance_pipeline() {
         
         // Flush pipeline if branch/jump was taken
         if (pc_changed) {
-            printf("Pipeline flush: Branch/Jump taken, flushing IF and ID stages\n");
+            fprintf(stderr, "Pipeline flush: Branch/Jump taken, flushing IF and ID stages\\n");
             
             // Clear IF stage (flush instruction that was fetched after branch)
             if (pipeline[0].active) {
-                printf("Flushing IF stage: %s\n", OPCODE_NAMES[pipeline[0].inst.opcode]);
+                fprintf(stderr, "Flushing IF stage: %s\\n", OPCODE_NAMES[pipeline[0].inst.opcode]);
                 pipeline[0].active = 0;
                 pipeline[0].cycles_in_stage = 0;
             }
             
             // Clear ID stage (flush instruction that was decoded after branch)
             if (pipeline[1].active) {
-                printf("Flushing ID stage: %s\n", OPCODE_NAMES[pipeline[1].inst.opcode]);
+                fprintf(stderr, "Flushing ID stage: %s\\n", OPCODE_NAMES[pipeline[1].inst.opcode]);
                 pipeline[1].active = 0;
                 pipeline[1].cycles_in_stage = 0;
             }
@@ -372,7 +373,7 @@ void advance_pipeline() {
                 pipeline[0].inst = inst;
                 pipeline[0].active = 1;
                 pipeline[0].cycles_in_stage = 0;
-                printf("Fetching instruction at PC=%d: %s\n", PC, OPCODE_NAMES[pipeline[0].inst.opcode]);
+                fprintf(stderr, "Fetching instruction at PC=%d: %s\\n", PC, OPCODE_NAMES[pipeline[0].inst.opcode]);
                 PC++;
             }
         }
@@ -416,7 +417,7 @@ void parse_instruction(char *line, int index) {
 
     // Parse instruction type
     if (sscanf(line, "%s", mnemonic) != 1) {
-        printf("Error: Could not parse instruction: %s\n", line);
+        fprintf(stderr, "Error: Could not parse instruction: %s\\n", line);
         return;
     }
 
@@ -463,14 +464,14 @@ void parse_instruction(char *line, int index) {
                 inst.valid = 1;
                 inst.opcode = XORI;
             } else {
-                printf("Error: Invalid XORI format (expected 'XORI Rx, Ry, imm'): %s\n", line);
+                fprintf(stderr, "Error: Invalid XORI format (expected 'XORI Rx, Ry, imm'): %s\\n", line);
                 inst.valid = 0;
             }
         }
 
         // Immediate value validation for MOVI and XORI
         if (imm < IMM_MIN || imm > IMM_MAX) {
-            printf("Error: Immediate value %d out of range [%d, %d] in instruction: %s\n", 
+            fprintf(stderr, "Error: Immediate value %d out of range [%d, %d] in instruction: %s\\n", 
                    imm, IMM_MIN, IMM_MAX, line);
             inst.valid = 0;
             return;
@@ -494,7 +495,7 @@ void parse_instruction(char *line, int index) {
 
         // Immediate value validation for LSL and LSR
         if (imm < 0 || imm > SHIFT_MAX) {
-            printf("Error: Shift amount %d out of range [0, %d] in instruction: %s\n", 
+            fprintf(stderr, "Error: Shift amount %d out of range [0, %d] in instruction: %s\\n", 
                    imm, SHIFT_MAX, line);
             inst.valid = 0;
             return;
@@ -518,7 +519,7 @@ void parse_instruction(char *line, int index) {
 
         // Memory offset validation for MOVR and MOVM
         if (imm < IMM_MIN || imm > IMM_MAX) {
-            printf("Error: Memory offset %d out of range [%d, %d] in instruction: %s\n", 
+            fprintf(stderr, "Error: Memory offset %d out of range [%d, %d] in instruction: %s\\n", 
                    imm, IMM_MIN, IMM_MAX, line);
             inst.valid = 0;
             return;
@@ -548,7 +549,7 @@ void parse_instruction(char *line, int index) {
 
         // Branch offset validation for JEQ
         if (imm < IMM_MIN || imm > IMM_MAX) {
-            printf("Error: Branch offset %d out of range [%d, %d] in instruction: %s\n", 
+            fprintf(stderr, "Error: Branch offset %d out of range [%d, %d] in instruction: %s\\n", 
                    imm, IMM_MIN, IMM_MAX, line);
             inst.valid = 0;
             return;
@@ -560,38 +561,38 @@ void parse_instruction(char *line, int index) {
         if (inst.r1 < 0 || inst.r1 >= REGISTER_COUNT ||
             inst.r2 < 0 || inst.r2 >= REGISTER_COUNT ||
             inst.r3 < 0 || inst.r3 >= REGISTER_COUNT) {
-            printf("Error: Invalid register number in instruction: %s\n", line);
+            fprintf(stderr, "Error: Invalid register number in instruction: %s\\n", line);
             inst.valid = 0;
         }
     }
 
     // Debug information for parsed instructions
     if (inst.valid) {
-        printf("\nDebug: Parsed instruction %d:\n", index);
-        printf("  Mnemonic: %s\n", mnemonic);
-        printf("  Type: %c\n", inst.type);
-        printf("  Opcode: %s\n", OPCODE_NAMES[inst.opcode]);
+        fprintf(stderr, "\\nDebug: Parsed instruction %d:\\n", index);
+        fprintf(stderr, "  Mnemonic: %s\\n", mnemonic);
+        fprintf(stderr, "  Type: %c\\n", inst.type);
+        fprintf(stderr, "  Opcode: %s\\n", OPCODE_NAMES[inst.opcode]);
         
         switch (inst.type) {
             case 'R':
-                printf("  Registers: R%d, R%d, R%d\n", inst.r1, inst.r2, inst.r3);
+                fprintf(stderr, "  Registers: R%d, R%d, R%d\\n", inst.r1, inst.r2, inst.r3);
                 break;
             case 'I':
                 if (inst.opcode == MOVI || inst.opcode == XORI) {
-                    printf("  Register: R%d, Immediate: %d\n", inst.r1, inst.immediate);
+                    fprintf(stderr, "  Register: R%d, Immediate: %d\\n", inst.r1, inst.immediate);
                 } else if (inst.opcode == LSL || inst.opcode == LSR) {
-                    printf("  Registers: R%d, R%d, Shift: %d\n", inst.r1, inst.r2, inst.immediate);
+                    fprintf(stderr, "  Registers: R%d, R%d, Shift: %d\\n", inst.r1, inst.r2, inst.immediate);
                 } else if (inst.opcode == MOVR || inst.opcode == MOVM) {
-                    printf("  Registers: R%d, R%d, Offset: %d\n", inst.r1, inst.r2, inst.immediate);
+                    fprintf(stderr, "  Registers: R%d, R%d, Offset: %d\\n", inst.r1, inst.r2, inst.immediate);
                 }
                 break;
             case 'J':
-                printf("  Jump Address: %d\n", inst.address);
+                fprintf(stderr, "  Jump Address: %d\\n", inst.address);
                 break;
         }
-        printf("  Original line: %s\n", line);
+        fprintf(stderr, "  Original line: %s\\n", line);
     } else {
-        printf("\nDebug: Invalid instruction at index %d: %s\n", index, line);
+        fprintf(stderr, "\\nDebug: Invalid instruction at index %d: %s\\n", index, line);
     }
 
     // At the end, use the new function to store the instruction
@@ -600,43 +601,43 @@ void parse_instruction(char *line, int index) {
 
 // Simple function to print all loaded instructions
 void print_loaded_instructions() {
-    printf("\n=== LOADED INSTRUCTIONS ===\n");
+    fprintf(stderr, "\\n=== LOADED INSTRUCTIONS ===\\n");
     for (int i = 0; i < total_instructions; i++) {
         if (instruction_memory[i].valid) {
             Instruction inst = instruction_memory[i];
-            printf("[%d] %s", i, OPCODE_NAMES[inst.opcode]);
+            fprintf(stderr, "[%d] %s", i, OPCODE_NAMES[inst.opcode]);
             
             if (inst.opcode == JMP) {
-                printf(" %d", inst.address);
+                fprintf(stderr, " %d", inst.address);
             } else if (inst.opcode == MOVI) {
-                printf(" R%d, %d", inst.r1, inst.immediate);
+                fprintf(stderr, " R%d, %d", inst.r1, inst.immediate);
             } else if (inst.opcode == JEQ) {
-                printf(" R%d, R%d, %d", inst.r1, inst.r2, inst.immediate);
+                fprintf(stderr, " R%d, R%d, %d", inst.r1, inst.r2, inst.immediate);
             } else if (inst.type == 'R') {
-                printf(" R%d, R%d, R%d", inst.r1, inst.r2, inst.r3);
+                fprintf(stderr, " R%d, R%d, R%d", inst.r1, inst.r2, inst.r3);
             } else {
-                printf(" R%d, R%d, %d", inst.r1, inst.r2, inst.immediate);
+                fprintf(stderr, " R%d, R%d, %d", inst.r1, inst.r2, inst.immediate);
             }
-            printf("\n");
+            fprintf(stderr, "\\n");
         }
     }
 }
 
 // Simple function to print all memory contents
 void print_all_memory_contents() {
-    printf("\n=== MEMORY CONTENTS ===\n");
-    printf("Data Memory (all addresses 0-%d):\n", DATA_MEMORY_SIZE-1);
+    fprintf(stderr, "\\n=== MEMORY CONTENTS ===\\n");
+    fprintf(stderr, "Data Memory (all addresses 0-%d):\\n", DATA_MEMORY_SIZE-1);
     
     for (int i = 0; i < DATA_MEMORY_SIZE; i++) {
         if (data_memory[i] != 0) {
-            printf("Address %d: %d\n", i, data_memory[i]);
+            fprintf(stderr, "Address %d: %d\\n", i, data_memory[i]);
         } else {
-            printf("Address %d: 0\n", i);
+            fprintf(stderr, "Address %d: 0\\n", i);
         }
         
         // Only show first 100 addresses to avoid too much output
         if (i >= 99) {
-            printf("... (remaining addresses all contain 0)\n");
+            fprintf(stderr, "... (remaining addresses all contain 0)\\n");
             break;
         }
     }
@@ -644,24 +645,61 @@ void print_all_memory_contents() {
 
 // Simple final registers display
 void print_final_registers() {
-    printf("\n=== FINAL REGISTERS ===\n");
+    fprintf(stderr, "\\n=== FINAL REGISTERS ===\\n");
     for (int i = 0; i < REGISTER_COUNT; i++) {
-        printf("R%d = %d\n", i, registers[i]);
+        fprintf(stderr, "R%d = %d\\n", i, registers[i]);
     }
-    printf("PC = %d\n", PC);
+    fprintf(stderr, "PC = %d\\n", PC);
 }
 
 // Simple cycle info
 void print_cycle_info() {
-    printf("\n=== CYCLE DETAILS ===\n");
-    printf("Total cycles executed: %d\n", clock_cycle - 1);
-    printf("Instructions processed: %d\n", total_instructions);
+    fprintf(stderr, "\\n=== CYCLE DETAILS ===\\n");
+    fprintf(stderr, "Total cycles executed: %d\\n", clock_cycle - 1);
+    fprintf(stderr, "Instructions processed: %d\\n", total_instructions);
+}
+
+void run_simulation_and_output_json() {
+    cJSON *root = cJSON_CreateObject();
+
+    // Add register data
+    cJSON *registers_json = cJSON_CreateArray();
+    for (int i = 0; i < REGISTER_COUNT; i++) {
+        cJSON_AddItemToArray(registers_json, cJSON_CreateNumber(registers[i]));
+    }
+    cJSON_AddItemToObject(root, "registers", registers_json);
+    cJSON_AddNumberToObject(root, "PC", PC);
+
+    // Add memory data (only non-zero for brevity, or as needed)
+    cJSON *memory_json = cJSON_CreateObject();
+    for (int i = 0; i < DATA_MEMORY_SIZE; i++) {
+        if (data_memory[i] != 0) {
+            char addr_str[10];
+            sprintf(addr_str, "%d", i);
+            cJSON_AddNumberToObject(memory_json, addr_str, data_memory[i]);
+        }
+    }
+    cJSON_AddItemToObject(root, "dataMemory", memory_json);
+
+    // Add pipeline state (this would be more complex, perhaps an array of objects per cycle)
+    // For simplicity, let's just add final cycle info
+    cJSON_AddNumberToObject(root, "finalClockCycle", clock_cycle -1);
+    cJSON_AddNumberToObject(root, "totalInstructions", total_instructions);
+
+
+    // ... (add other data like pipeline history, instruction memory etc.)
+
+    char *json_string = cJSON_PrintUnformatted(root);
+    printf("%s\n", json_string); // Print the single JSON string to stdout
+
+    cJSON_Delete(root);
+    free(json_string);
 }
 
 int main() {
     FILE *file = fopen("asm.txt", "r");
     if (!file) {
-        printf("Error opening asm.txt\n");
+        fprintf(stderr, "Error opening asm.txt\\n");
         return 1;
     }
 
@@ -680,32 +718,26 @@ int main() {
 
     total_instructions = index;
     clock_cycle = 1;
-    
+
     // Print loaded instructions before simulation starts
-    print_loaded_instructions();
+    print_loaded_instructions(); // This now prints to stderr
     
-    while (1) {
-        if (PC >= total_instructions && 
-            !pipeline[0].active && !pipeline[1].active && 
+    // Simulate to completion
+     while (1) {
+        if (PC >= total_instructions &&
+            !pipeline[0].active && !pipeline[1].active &&
             !pipeline[2].active && !pipeline[3].active && !pipeline[4].active) {
-            printf("\nProgram completed at cycle %d\n", clock_cycle-2);
             break;
         }
-
-        print_pipeline_state();
-        advance_pipeline();
+        advance_pipeline(); // This function would internally update global state
         clock_cycle++;
-
-        if (clock_cycle > 1000) {
-            printf("Warning: Maximum cycle count exceeded.\n");
+        if (clock_cycle > 10000) { // Increased limit for safety
+             // Handle timeout, maybe add to JSON output
             break;
         }
     }
 
-    // Simple final output - just what you requested
-    print_final_registers();
-    print_all_memory_contents();
-    print_cycle_info();
+    run_simulation_and_output_json(); // New function to output all results as JSON
 
     return 0;
 }
